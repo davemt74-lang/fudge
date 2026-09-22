@@ -132,6 +132,7 @@ final class CostingService
                 $componentCost = $normalizedQty * (float)$costSource['unit_cost'];
                 $materialCost += $componentCost;
                 $details[] = [
+                    'recipe_item_id'=>(int)$item['id'],
                     'component_type'=>$componentType,
                     'component_id'=>$componentId,
                     'name'=>$costSource['name'],
@@ -154,7 +155,7 @@ final class CostingService
                     $name = (string)($this->db->scalar('SELECT name FROM recipes WHERE id=?', [$componentId]) ?: 'Nested recipe');
                     $warnings[] = $name . ' has no published version.';
                     $details[] = [
-                        'component_type'=>'recipe','component_id'=>$componentId,'name'=>$name,
+                        'recipe_item_id'=>(int)$item['id'],'component_type'=>'recipe','component_id'=>$componentId,'name'=>$name,
                         'quantity'=>$quantity,'unit'=>$unit,'cost'=>0.0,'complete'=>false,
                     ];
                     continue;
@@ -179,6 +180,7 @@ final class CostingService
                 $componentCost = $normalizedQty * (float)$nested['unit_cost'];
                 $materialCost += $componentCost;
                 $details[] = [
+                    'recipe_item_id'=>(int)$item['id'],
                     'component_type'=>'recipe',
                     'component_id'=>$componentId,
                     'name'=>$nested['recipe_name'],
@@ -502,6 +504,22 @@ final class RecipeService
         );
     }
 
+    public function updateComponent(int $versionId, int $itemId, float $quantity, string $unit): void
+    {
+        $this->requireDraft($versionId);
+        if ($quantity < 0) throw new RuntimeException('Recipe component quantity cannot be negative.');
+        if ((int)$this->db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$unit]) < 1) {
+            throw new RuntimeException('Select a valid component unit.');
+        }
+        $updated = $this->db->exec(
+            'UPDATE recipe_items SET quantity=?,unit=? WHERE id=? AND recipe_version_id=?',
+            [$quantity,$unit,$itemId,$versionId]
+        );
+        if ($updated < 1 && (int)$this->db->scalar('SELECT COUNT(*) FROM recipe_items WHERE id=? AND recipe_version_id=?',[$itemId,$versionId]) < 1) {
+            throw new RuntimeException('Recipe component not found.');
+        }
+    }
+
     public function removeComponent(int $versionId, int $itemId): void
     {
         $this->requireDraft($versionId);
@@ -511,6 +529,8 @@ final class RecipeService
     public function publish(int $versionId): array
     {
         $version = $this->requireDraft($versionId);
+        $componentCount = (int)$this->db->scalar('SELECT COUNT(*) FROM recipe_items WHERE recipe_version_id=?',[$versionId]);
+        if ($componentCount < 1) throw new RuntimeException('Add at least one component before publishing a recipe.');
         $cost = $this->costing->recipeVersionCost($versionId);
 
         return $this->db->transaction(function(Database $db) use ($versionId,$version,$cost) {
