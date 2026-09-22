@@ -536,6 +536,7 @@ CREATE TABLE IF NOT EXISTS inventory_counts (
   count_number VARCHAR(80) NOT NULL UNIQUE,
   status ENUM('open','completed','cancelled') NOT NULL DEFAULT 'open',
   started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  inventory_transaction_cursor BIGINT UNSIGNED NOT NULL DEFAULT 0,
   completed_at DATETIME NULL,
   created_by BIGINT UNSIGNED NULL,
   completed_by BIGINT UNSIGNED NULL,
