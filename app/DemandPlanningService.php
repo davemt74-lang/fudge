@@ -26,8 +26,11 @@ final class DemandPlanningService
                 throw new RuntimeException('Flavor allocation can only be changed before packing begins.');
             }
 
-            $flavor = $db->one('SELECT id,name FROM flavors WHERE id=? AND is_active=1',[$flavorId]);
-            if (!$flavor) throw new RuntimeException('Select an active flavor.');
+            $flavor = $db->one('SELECT id,name,is_active FROM flavors WHERE id=?',[$flavorId]);
+            if (!$flavor) throw new RuntimeException('Flavor not found.');
+            if ($quantity > 0 && !(int)$flavor['is_active']) {
+                throw new RuntimeException('New quantities can only be assigned to an active flavor.');
+            }
 
             $capacity = max(1,(int)($item['box_capacity'] ?: 1));
             $maximum = $capacity * max(1,(int)$item['quantity']);
