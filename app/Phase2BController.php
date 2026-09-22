@@ -243,7 +243,13 @@ function handle_phase2b_page(string $page): never
                                 echo '</select><button class="btn small">Save</button></form>';
                             } else echo h($item['quantity'].' '.$item['unit']);
                             $componentCost=$costByItem[(int)$item['id']]??null;
-                            echo '</td><td>'.($componentCost===null?'—':'
+                            echo '</td><td>'.($componentCost===null?'—':'USD '.number_format((float)$componentCost,4)).'</td><td>';
+                            if($version['status']==='draft'&&can('recipes.edit')){
+                                echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="remove_recipe_component"><input type="hidden" name="recipe_id" value="'.$recipeId.'"><input type="hidden" name="version_id" value="'.$versionId.'"><input type="hidden" name="recipe_item_id" value="'.$item['id'].'"><button class="btn small danger" data-confirm="Remove this recipe component?">Remove</button></form>';
+                            }
+                            echo '</td></tr>';
+                        }
+                        if(!$items) echo '<tr><td colspan="5" class="empty">No components yet.</td></tr>';
                         echo '</tbody></table></div>';
 
                         if($version['status']==='draft'&&can('recipes.edit')){
