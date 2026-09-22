@@ -81,11 +81,13 @@ final class PurchasingService
 
     public function cancel(int $purchaseOrderId): void
     {
-        $po = $this->db->one('SELECT status FROM purchase_orders WHERE id=?', [$purchaseOrderId]);
-        if (!$po || in_array($po['status'], ['received','cancelled'], true)) throw new RuntimeException('This purchase order cannot be cancelled.');
-        $received = (float)$this->db->scalar('SELECT COALESCE(SUM(received_quantity),0) FROM purchase_order_items WHERE purchase_order_id=?', [$purchaseOrderId]);
-        if ($received > 0) throw new RuntimeException('A partially received purchase order cannot be cancelled.');
-        $this->db->exec('UPDATE purchase_orders SET status="cancelled" WHERE id=?', [$purchaseOrderId]);
+        $this->db->transaction(function(Database $db) use ($purchaseOrderId) {
+            $po = $db->one('SELECT status FROM purchase_orders WHERE id=? FOR UPDATE', [$purchaseOrderId]);
+            if (!$po || in_array($po['status'], ['received','cancelled'], true)) throw new RuntimeException('This purchase order cannot be cancelled.');
+            $received = (float)$db->scalar('SELECT COALESCE(SUM(received_quantity),0) FROM purchase_order_items WHERE purchase_order_id=?', [$purchaseOrderId]);
+            if ($received > 0) throw new RuntimeException('A partially received purchase order cannot be cancelled.');
+            $db->exec('UPDATE purchase_orders SET status="cancelled" WHERE id=?', [$purchaseOrderId]);
+        });
     }
 
     public function receive(int $purchaseOrderId, array $receipts, ?string $notes, int $userId): int
@@ -264,6 +266,7 @@ final class InventoryCountService
         foreach ($values as $itemId => $value) {
             if ($value === '' || $value === null) continue;
             if (!is_numeric($value)) throw new RuntimeException('Inventory count values must be numeric.');
+            if ((float)$value < 0) throw new RuntimeException('Physical inventory counts cannot be negative.');
             $this->db->exec(
                 'UPDATE inventory_count_items
                  SET counted_quantity=?,variance_quantity=?-expected_quantity,counted_by=?,counted_at=NOW()
