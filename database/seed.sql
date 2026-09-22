@@ -218,3 +218,7 @@ INSERT IGNORE INTO llm_feature_settings (feature_key,enabled) VALUES
 
 INSERT INTO platform_meta (meta_key,meta_value) VALUES ('app_version','0.1.0')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
+
+
+INSERT INTO platform_meta (meta_key,meta_value) VALUES ('phase_2a','complete')
+ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
