@@ -66,15 +66,17 @@ final class DemandPlanningService
     {
         $this->validateDates($startDate,$endDate);
 
-        $planId = $this->db->insert(
-            'INSERT INTO production_plans
-             (plan_code,start_date,end_date,status,notes,created_by)
-             VALUES (?,?,?,"draft",?,?)',
-            [Security::reference('PLAN'),$startDate,$endDate,$notes ?: null,$userId]
-        );
+        return $this->db->transaction(function(Database $db) use ($startDate,$endDate,$notes,$userId) {
+            $planId = $db->insert(
+                'INSERT INTO production_plans
+                 (plan_code,start_date,end_date,status,notes,created_by)
+                 VALUES (?,?,?,"draft",?,?)',
+                [Security::reference('PLAN'),$startDate,$endDate,$notes ?: null,$userId]
+            );
 
-        $this->rebuild($planId);
-        return $planId;
+            $this->rebuild($planId);
+            return $planId;
+        });
     }
 
     public function rebuild(int $planId): array
@@ -204,24 +206,26 @@ final class DemandPlanningService
 
     public function setPlannedQuantity(int $planId, int $flavorId, int $quantity): void
     {
-        $plan=$this->db->one('SELECT status FROM production_plans WHERE id=?',[$planId]);
-        if(!$plan || $plan['status']!=='draft') throw new RuntimeException('Only draft plans can be edited.');
+        $this->db->transaction(function(Database $db) use ($planId,$flavorId,$quantity) {
+            $plan=$db->one('SELECT status FROM production_plans WHERE id=? FOR UPDATE',[$planId]);
+            if(!$plan || $plan['status']!=='draft') throw new RuntimeException('Only draft plans can be edited.');
 
-        $row=$this->db->one(
-            'SELECT required_quantity FROM production_plan_items
-             WHERE production_plan_id=? AND flavor_id=?',
-            [$planId,$flavorId]
-        );
-        if(!$row) throw new RuntimeException('Flavor is not in this production plan.');
-        if($quantity < (int)$row['required_quantity']) {
-            throw new RuntimeException('Planned quantity cannot be lower than confirmed order demand.');
-        }
+            $row=$db->one(
+                'SELECT required_quantity FROM production_plan_items
+                 WHERE production_plan_id=? AND flavor_id=? FOR UPDATE',
+                [$planId,$flavorId]
+            );
+            if(!$row) throw new RuntimeException('Flavor is not in this production plan.');
+            if($quantity < (int)$row['required_quantity']) {
+                throw new RuntimeException('Planned quantity cannot be lower than confirmed order demand.');
+            }
 
-        $this->db->exec(
-            'UPDATE production_plan_items SET planned_quantity=? WHERE production_plan_id=? AND flavor_id=?',
-            [$quantity,$planId,$flavorId]
-        );
-        $this->refreshMaterialRequirements($planId);
+            $db->exec(
+                'UPDATE production_plan_items SET planned_quantity=? WHERE production_plan_id=? AND flavor_id=?',
+                [$quantity,$planId,$flavorId]
+            );
+            $this->refreshMaterialRequirements($planId);
+        });
     }
 
     public function launchProduction(int $planId, int $userId): int
