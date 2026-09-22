@@ -44,6 +44,12 @@ final class Security
         return $decoded ?: hash('sha256', $key, true);
     }
 
+    public static function reference(string $prefix): string
+    {
+        $prefix = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '-', trim($prefix)) ?: 'REF');
+        return $prefix . '-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(3)));
+    }
+
     public static function maskSecret(?string $secret): string
     {
         if (!$secret) return 'Not configured';
