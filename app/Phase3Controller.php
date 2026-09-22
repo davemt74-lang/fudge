@@ -114,7 +114,7 @@ function handle_phase3_page(string $page): never
          ORDER BY COALESCE(o.fulfillment_at,o.created_at),o.id,oi.id
          LIMIT 100"
     );
-    $flavors=$db->all('SELECT id,name FROM flavors WHERE is_active=1 ORDER BY name');
+    $flavors=$db->all('SELECT id,name,is_active FROM flavors ORDER BY is_active DESC,name');
 
     echo '<div class="card" style="margin-bottom:18px"><div class="table-head"><h2>Order Flavor Allocation</h2><span class="muted">Every ordered donut must have a flavor before a plan can lock.</span></div>';
     if(!$eligibleItems){
@@ -137,7 +137,7 @@ function handle_phase3_page(string $page): never
             echo '<tr><td><strong>'.h($item['order_number']).'</strong><div class="muted">'.h($item['fulfillment_at']?:'No fulfillment time').'</div></td><td>'.h($item['product_name']).'</td><td>'.$required.'</td><td><span class="badge '.($complete?'good':'warn').'">'.h($item['allocated_units']).' / '.$required.'</span></td><td>'.h($mix?implode(', ',$mix):'Not allocated').'</td><td>';
             if(can('orders.allocate_flavors')){
                 echo '<form method="post" class="actions">'.Ui::csrf().'<input type="hidden" name="form_action" value="allocate_order_flavor"><input type="hidden" name="order_item_id" value="'.$item['order_item_id'].'"><select name="flavor_id" required><option value="">Flavor</option>';
-                foreach($flavors as $flavor) echo '<option value="'.$flavor['id'].'">'.h($flavor['name']).'</option>';
+                foreach($flavors as $flavor) echo '<option value="'.$flavor['id'].'">'.h($flavor['name'].($flavor['is_active']?'':' (Inactive — set 0 to remove)')).'</option>';
                 echo '</select><input type="number" min="0" max="'.$required.'" name="quantity" value="1" style="width:78px"><button class="btn small">Set</button></form>';
             }else echo '—';
             echo '</td></tr>';
