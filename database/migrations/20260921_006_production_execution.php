@@ -66,6 +66,18 @@ return [
                AND ri.component_recipe_version_id IS NULL"
         );
 
+        if(!$columnExists($pdo,'inventory_counts','inventory_transaction_cursor')){
+            $pdo->exec(
+                'ALTER TABLE inventory_counts
+                 ADD COLUMN inventory_transaction_cursor BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER started_at'
+            );
+            $pdo->exec(
+                'UPDATE inventory_counts
+                 SET inventory_transaction_cursor=(SELECT COALESCE(MAX(id),0) FROM inventory_transactions)
+                 WHERE inventory_transaction_cursor=0'
+            );
+        }
+
         // Stage keys are data-driven from production_stages.
         $pdo->exec(
             "ALTER TABLE production_batches
