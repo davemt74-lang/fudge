@@ -41,6 +41,8 @@ grep -q "Physical Count Reconciliation" "$ROOT/app/PurchasingService.php"
 grep -q "ordered_packages.*received_packages" "$ROOT/app/PurchasingService.php"
 grep -q "GET_LOCK" "$ROOT/app/Migrator.php"
 grep -q "purchasing.receive" "$ROOT/database/migrations/20260921_003_purchasing_receiving_inventory_counts.php"
+grep -q "Admin is intended to be full-access" "$ROOT/database/migrations/20260921_003_purchasing_receiving_inventory_counts.php"
+grep -q "Physical inventory counts cannot be negative" "$ROOT/app/PurchasingService.php"
 echo "  PASS"
 
 echo "[7/7] Secret hygiene"
