@@ -121,13 +121,16 @@ function handle_phase2b_page(string $page): never
                     $unit=trim($_POST['unit']??'each');
                     if(!$productId||!$packagingId||$qty<0) throw new RuntimeException('Product, packaging item and non-negative quantity are required.');
                     if((int)$db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$unit])<1) throw new RuntimeException('Select a valid packaging unit.');
+                    $impactRef=Security::reference('BOM');
+                    try{$costing->captureSnapshots($uid,'product_packaging_before',$impactRef);}catch(Throwable $ignored){}
                     $db->exec(
                         'INSERT INTO product_packaging_components(product_id,packaging_item_id,quantity,unit)
                          VALUES(?,?,?,?)
                          ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),unit=VALUES(unit)',
                         [$productId,$packagingId,$qty,$unit]
                     );
-                    audit('product.packaging_saved','product',$productId,null,['packaging_item_id'=>$packagingId,'quantity'=>$qty,'unit'=>$unit]);
+                    try{$costing->captureSnapshots($uid,'product_packaging_after',$impactRef);}catch(Throwable $ignored){}
+                    audit('product.packaging_saved','product',$productId,null,['packaging_item_id'=>$packagingId,'quantity'=>$qty,'unit'=>$unit,'cost_impact_reference'=>$impactRef]);
                     flash('success','Product packaging BOM updated.');
                     redirect('?page=costing&product='.$productId);
 
@@ -136,8 +139,11 @@ function handle_phase2b_page(string $page): never
                     $id=(int)($_POST['component_id']??0);
                     $component=$db->one('SELECT * FROM product_packaging_components WHERE id=?',[$id]);
                     if(!$component) throw new RuntimeException('Packaging component not found.');
+                    $impactRef=Security::reference('BOM');
+                    try{$costing->captureSnapshots($uid,'product_packaging_before',$impactRef);}catch(Throwable $ignored){}
                     $db->exec('DELETE FROM product_packaging_components WHERE id=?',[$id]);
-                    audit('product.packaging_removed','product',(int)$component['product_id'],$component,null);
+                    try{$costing->captureSnapshots($uid,'product_packaging_after',$impactRef);}catch(Throwable $ignored){}
+                    audit('product.packaging_removed','product',(int)$component['product_id'],$component,['cost_impact_reference'=>$impactRef]);
                     flash('success','Product packaging component removed.');
                     redirect('?page=costing&product='.$component['product_id']);
             }
@@ -318,6 +324,153 @@ function handle_phase2b_page(string $page): never
         echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Cost Snapshot History</h2></div><table><thead><tr><th>Date</th><th>Product</th><th>COGS</th><th>Price</th><th>Margin</th><th>Trigger</th><th>Status</th></tr></thead><tbody>';
         foreach($history as $h)echo '<tr><td>'.h($h['created_at']).'</td><td>'.h($h['product_name']).'</td><td>$'.number_format((float)$h['direct_cogs'],2).'</td><td>$'.number_format((float)$h['selling_price'],2).'</td><td>'.number_format((float)$h['margin_pct'],1).'%</td><td>'.h($h['trigger_type']).'<div class="muted">'.h($h['trigger_reference']).'</div></td><td>'.($h['is_complete']?'<span class="badge good">Complete</span>':'<span class="badge warn">Incomplete</span>').'</td></tr>';
         if(!$history)echo '<tr><td colspan="7" class="empty">No cost snapshots yet.</td></tr>';
+        echo '</tbody></table></div>';
+
+        $impacts=$db->all(
+            "SELECT a.created_at,a.trigger_reference,a.trigger_type,p.name product_name,
+                    b.direct_cogs before_cogs,a.direct_cogs after_cogs,
+                    b.margin_pct before_margin,a.margin_pct after_margin,
+                    b.is_complete before_complete,a.is_complete after_complete
+             FROM product_cost_snapshots b
+             JOIN product_cost_snapshots a
+               ON a.product_id=b.product_id
+              AND a.trigger_reference=b.trigger_reference
+              AND a.trigger_type=REPLACE(b.trigger_type,'_before','_after')
+             JOIN products p ON p.id=a.product_id
+             WHERE b.trigger_type LIKE '%_before'
+             ORDER BY a.id DESC LIMIT 30"
+        );
+        echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Recent Cost Impacts</h2></div><table><thead><tr><th>Date</th><th>Product</th><th>Trigger</th><th>COGS Change</th><th>Margin Change</th><th>Status</th></tr></thead><tbody>';
+        foreach($impacts as $i){$dc=(float)$i['after_cogs']-(float)$i['before_cogs'];$dm=(float)$i['after_margin']-(float)$i['before_margin'];echo '<tr><td>'.h($i['created_at']).'</td><td>'.h($i['product_name']).'</td><td>'.h(str_replace('_after','',$i['trigger_type'])).'<div class="muted">'.h($i['trigger_reference']).'</div></td><td>'.($dc>=0?'+':'').' 
+            "SELECT h.*,s.name supplier,
+             CASE WHEN si.item_type='ingredient' THEN (SELECT name FROM ingredients WHERE id=si.item_id)
+                  ELSE (SELECT name FROM packaging_items WHERE id=si.item_id) END item_name
+             FROM supplier_price_history h
+             JOIN supplier_items si ON si.id=h.supplier_item_id
+             JOIN suppliers s ON s.id=si.supplier_id
+             ORDER BY h.id DESC LIMIT 30"
+        );
+        echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Supplier Cost Changes</h2></div><table><thead><tr><th>Date</th><th>Item</th><th>Supplier</th><th>Old Unit Cost</th><th>New Unit Cost</th><th>Delta</th></tr></thead><tbody>';
+        foreach($priceChanges as $h){$old=(float)($h['old_unit_cost']??0);$new=(float)$h['unit_cost'];$delta=$new-$old;echo '<tr><td>'.h($h['effective_at']).'</td><td>'.h($h['item_name']).'</td><td>'.h($h['supplier']).'</td><td>$'.number_format($old,4).'</td><td>$'.number_format($new,4).'</td><td>'.($delta>=0?'+':'').'$'.number_format($delta,4).'</td></tr>';}
+        if(!$priceChanges)echo '<tr><td colspan="6" class="empty">Price changes appear here after using Supplier → Update Price.</td></tr>';
+        echo '</tbody></table></div>';
+
+        Ui::layoutEnd();
+        exit;
+    }
+
+    http_response_code(404);
+    exit('Page not found.');
+}
+.number_format((float)($costByItem[(int)$item['id']]??0),4).'</td><td>';
+                            if($version['status']==='draft'&&can('recipes.edit')) echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="remove_recipe_component"><input type="hidden" name="recipe_id" value="'.$recipeId.'"><input type="hidden" name="version_id" value="'.$versionId.'"><input type="hidden" name="recipe_item_id" value="'.$item['id'].'"><button class="btn small danger" data-confirm="Remove this component from the draft?">Remove</button></form>';
+                            echo '</td></tr>';
+                        }
+                        if(!$items)echo '<tr><td colspan="5" class="empty">No components yet.</td></tr>';
+                        echo '</tbody></table></div>';
+
+                        if($version['status']==='draft'&&can('recipes.edit')){
+                            $ingredients=$db->all('SELECT id,name FROM ingredients WHERE is_active=1 ORDER BY name');
+                            $packaging=$db->all('SELECT id,name FROM packaging_items WHERE is_active=1 ORDER BY name');
+                            $nested=$db->all('SELECT id,name FROM recipes WHERE is_active=1 AND id<>? ORDER BY name',[$recipeId]);
+                            $units=$units??$db->all('SELECT symbol,name FROM units ORDER BY unit_type,name');
+                            echo '<div style="margin-top:16px"><h3>Add Component</h3><form method="post" class="form-grid">'.Ui::csrf().'<input type="hidden" name="form_action" value="add_recipe_component"><input type="hidden" name="recipe_id" value="'.$recipeId.'"><input type="hidden" name="version_id" value="'.$versionId.'"><label class="span-2">Component<select name="component_ref" required><option value="">Select component</option><optgroup label="Ingredients">';
+                            foreach($ingredients as $i)echo '<option value="ingredient:'.$i['id'].'">'.h($i['name']).'</option>';
+                            echo '</optgroup><optgroup label="Packaging">';
+                            foreach($packaging as $p)echo '<option value="packaging:'.$p['id'].'">'.h($p['name']).'</option>';
+                            echo '</optgroup><optgroup label="Sub-recipes">';
+                            foreach($nested as $n)echo '<option value="recipe:'.$n['id'].'">'.h($n['name']).'</option>';
+                            echo '</optgroup></select></label><label>Quantity<input type="number" min="0" step="0.0001" name="quantity" required></label><label>Unit<select name="unit">';
+                            foreach($units as $u)echo '<option value="'.h($u['symbol']).'">'.h($u['name'].' ('.$u['symbol'].')').'</option>';
+                            echo '</select></label><div class="span-2 actions"><button class="btn">Add Component</button>';
+                            if(can('recipes.publish')) echo '<button class="btn primary" type="submit" name="form_action" value="publish_recipe" data-confirm="Publish this version and retire the previous published version?">Publish Version</button>';
+                            echo '</div></form></div>';
+                        }
+                        echo '</div>';
+                    }
+                }
+            }
+        }
+
+        Ui::layoutEnd();
+        exit;
+    }
+
+    if ($page === 'costing') {
+        require_permission('costing.view');
+        Ui::layoutStart('Costing','costing');
+        Ui::pageHead('Costing & Margin','Live recipe COGS and product margin driven by supplier pricing.','<a class="btn" href="?page=recipes">Recipes</a>');
+
+        if(can('costing.snapshot')) echo '<form method="post" style="margin-bottom:18px">'.Ui::csrf().'<input type="hidden" name="form_action" value="capture_cost_snapshot"><button class="btn primary">Capture Cost Snapshot</button></form>';
+
+        $products=$db->all('SELECT * FROM products WHERE is_active=1 ORDER BY id');
+        echo '<div class="grid cols-3">';
+        foreach($products as $product){
+            try{$cost=$costing->productCost((int)$product['id']);}
+            catch(Throwable $e){echo '<div class="card"><h2>'.h($product['name']).'</h2><div class="alert danger">'.h($e->getMessage()).'</div></div>';continue;}
+            echo '<div class="card"><div class="kicker">'.h($product['sku']).'</div><h2>'.h($product['name']).'</h2><div class="two-col-stat"><div class="metric"><div class="label">Price</div><div class="value">$'.number_format((float)$cost['selling_price'],2).'</div></div><div class="metric"><div class="label">Direct COGS</div><div class="value">$'.number_format((float)$cost['direct_cogs'],2).'</div></div></div>';
+            if($cost['complete']&&can('costing.view_margin')) echo '<p><strong>Gross contribution:</strong> $'.number_format((float)$cost['gross_profit'],2).' · '.number_format((float)$cost['margin_pct'],1).'%</p><span class="badge good">Complete Cost</span>';
+            else echo '<span class="badge warn">Needs Pricing</span><p class="muted">'.h(implode(' · ',$cost['warnings'])).'</p>';
+            echo '<div style="margin-top:12px"><a class="btn small" href="?page=costing&product='.$product['id'].'">Packaging BOM</a></div></div>';
+        }
+        echo '</div>';
+
+        $flavors=$costing->flavorCosts();
+        echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Flavor Unit Costs</h2></div><table><thead><tr><th>Flavor</th><th>Recipe</th><th>Unit Cost</th><th>Status</th><th>Warnings</th></tr></thead><tbody>';
+        foreach($flavors as $f)echo '<tr><td><strong>'.h($f['flavor_name']).'</strong></td><td>'.h($f['recipe_name']).' v'.h($f['version_number']).'</td><td>$'.number_format((float)$f['unit_cost'],4).'</td><td>'.($f['complete']?'<span class="badge good">Complete</span>':'<span class="badge warn">Needs Pricing</span>').'</td><td>'.h(implode(' · ',$f['warnings'])).'</td></tr>';
+        echo '</tbody></table></div>';
+
+        $selectedProduct=(int)($_GET['product']??0);
+        if($selectedProduct&&can('products.manage')){
+            $p=$db->one('SELECT * FROM products WHERE id=?',[$selectedProduct]);
+            if($p){
+                $packaging=$db->all('SELECT id,name,inventory_unit FROM packaging_items WHERE is_active=1 ORDER BY name');
+                $units=$db->all('SELECT symbol,name FROM units ORDER BY unit_type,name');
+                $bom=$db->all('SELECT ppc.*,pi.name packaging_name FROM product_packaging_components ppc JOIN packaging_items pi ON pi.id=ppc.packaging_item_id WHERE ppc.product_id=? ORDER BY ppc.id',[$selectedProduct]);
+                echo '<div class="card" style="margin-top:18px"><h2 class="section-title">'.h($p['name']).' Packaging BOM</h2><form method="post" class="form-grid">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_product_packaging"><input type="hidden" name="product_id" value="'.$selectedProduct.'"><label>Packaging Item<select name="packaging_item_id">';
+                foreach($packaging as $item)echo '<option value="'.$item['id'].'">'.h($item['name']).'</option>';
+                echo '</select></label><label>Quantity<input type="number" min="0" step="0.0001" name="quantity" value="1" required></label><label>Unit<select name="unit">';
+                foreach($units as $u)echo '<option value="'.h($u['symbol']).'">'.h($u['name'].' ('.$u['symbol'].')').'</option>';
+                echo '</select></label><div><button class="btn" style="margin-top:27px">Add / Update</button></div></form><div class="list" style="margin-top:12px">';
+                foreach($bom as $b)echo '<div class="list-row"><span><strong>'.h($b['packaging_name']).'</strong> · '.h($b['quantity'].' '.$b['unit']).'</span><form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="remove_product_packaging"><input type="hidden" name="component_id" value="'.$b['id'].'"><button class="btn small danger" data-confirm="Remove this packaging component?">Remove</button></form></div>';
+                if(!$bom)echo '<div class="empty">No product-level packaging components.</div>';
+                echo '</div></div>';
+            }
+        }
+
+        $history=$db->all(
+            'SELECT pcs.*,p.name product_name
+             FROM product_cost_snapshots pcs JOIN products p ON p.id=pcs.product_id
+             ORDER BY pcs.id DESC LIMIT 30'
+        );
+        echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Cost Snapshot History</h2></div><table><thead><tr><th>Date</th><th>Product</th><th>COGS</th><th>Price</th><th>Margin</th><th>Trigger</th><th>Status</th></tr></thead><tbody>';
+        foreach($history as $h)echo '<tr><td>'.h($h['created_at']).'</td><td>'.h($h['product_name']).'</td><td>$'.number_format((float)$h['direct_cogs'],2).'</td><td>$'.number_format((float)$h['selling_price'],2).'</td><td>'.number_format((float)$h['margin_pct'],1).'%</td><td>'.h($h['trigger_type']).'<div class="muted">'.h($h['trigger_reference']).'</div></td><td>'.($h['is_complete']?'<span class="badge good">Complete</span>':'<span class="badge warn">Incomplete</span>').'</td></tr>';
+        if(!$history)echo '<tr><td colspan="7" class="empty">No cost snapshots yet.</td></tr>';
+        echo '</tbody></table></div>';
+
+        $priceChanges=$db->all(
+            "SELECT h.*,s.name supplier,
+             CASE WHEN si.item_type='ingredient' THEN (SELECT name FROM ingredients WHERE id=si.item_id)
+                  ELSE (SELECT name FROM packaging_items WHERE id=si.item_id) END item_name
+             FROM supplier_price_history h
+             JOIN supplier_items si ON si.id=h.supplier_item_id
+             JOIN suppliers s ON s.id=si.supplier_id
+             ORDER BY h.id DESC LIMIT 30"
+        );
+        echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Supplier Cost Changes</h2></div><table><thead><tr><th>Date</th><th>Item</th><th>Supplier</th><th>Old Unit Cost</th><th>New Unit Cost</th><th>Delta</th></tr></thead><tbody>';
+        foreach($priceChanges as $h){$old=(float)($h['old_unit_cost']??0);$new=(float)$h['unit_cost'];$delta=$new-$old;echo '<tr><td>'.h($h['effective_at']).'</td><td>'.h($h['item_name']).'</td><td>'.h($h['supplier']).'</td><td>$'.number_format($old,4).'</td><td>$'.number_format($new,4).'</td><td>'.($delta>=0?'+':'').'$'.number_format($delta,4).'</td></tr>';}
+        if(!$priceChanges)echo '<tr><td colspan="6" class="empty">Price changes appear here after using Supplier → Update Price.</td></tr>';
+        echo '</tbody></table></div>';
+
+        Ui::layoutEnd();
+        exit;
+    }
+
+    http_response_code(404);
+    exit('Page not found.');
+}
+.number_format($dc,2).'</td><td>'.($dm>=0?'+':'').number_format($dm,2).' pts</td><td>'.(($i['before_complete']&&$i['after_complete'])?'<span class="badge good">Complete</span>':'<span class="badge warn">Incomplete</span>').'</td></tr>';}
+        if(!$impacts)echo '<tr><td colspan="6" class="empty">Before/after cost impacts appear after supplier-price or packaging changes.</td></tr>';
         echo '</tbody></table></div>';
 
         $priceChanges=$db->all(
