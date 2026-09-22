@@ -715,8 +715,14 @@ final class ProductionExecutionService
                     'already_completed'=>true,
                 ];
             }
-            if($batch['status']!=='boxed'){
-                throw new RuntimeException('The batch must reach Boxed before completion.');
+            $lastStep=$db->one(
+                'SELECT * FROM production_batch_steps
+                 WHERE batch_id=?
+                 ORDER BY sort_order DESC,id DESC LIMIT 1 FOR UPDATE',
+                [$batchId]
+            );
+            if(!$lastStep || $batch['status']!==$lastStep['step_key']){
+                throw new RuntimeException('The batch must reach its final production stage before completion.');
             }
 
             $uncommitted=(int)$db->scalar(
@@ -773,8 +779,8 @@ final class ProductionExecutionService
             $db->exec(
                 'UPDATE production_batch_steps
                  SET status="completed",completed_at=COALESCE(completed_at,NOW()),completed_by=COALESCE(completed_by,?)
-                 WHERE batch_id=? AND step_key="boxed"',
-                [$userId,$batchId]
+                 WHERE id=?',
+                [$userId,$lastStep['id']]
             );
             $db->exec('UPDATE production_batches SET status="completed" WHERE id=?',[$batchId]);
 
