@@ -108,13 +108,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 audit('customer.saved','customer',$id,null,$data);flash('success','Customer saved.');redirect('?page=customers');
             case 'create_batch':
                 require_permission('production.create_batch');
-                $code=trim($_POST['batch_code']??''); if($code==='') $code='FD-'.date('Ymd-His');
+                $code=trim($_POST['batch_code']??''); if($code==='') $code=Security::reference('BATCH');
                 $id=$db->insert('INSERT INTO production_batches(batch_code,scheduled_for,status,notes,created_by) VALUES(?,?,'scheduled',?,?)',[$code,$_POST['scheduled_for']?:null,trim($_POST['notes']??'')?:null,$uid]);
                 audit('production.batch_created','production_batch',$id,null,['batch_code'=>$code]);flash('success','Production batch created.');redirect('?page=production');
             case 'create_order':
                 require_permission('orders.create');
                 $productId=(int)($_POST['product_id']??0);$qty=max(1,(int)($_POST['quantity']??1));$product=$db->one('SELECT * FROM products WHERE id=?',[$productId]); if(!$product) throw new RuntimeException('Select a product.');
-                $number='FD'.date('ymdHis').random_int(10,99);$subtotal=(float)$product['price']*$qty;
+                $number=Security::reference('ORD');$subtotal=(float)$product['price']*$qty;
                 $orderId=$db->insert('INSERT INTO orders(order_number,customer_id,status,sales_channel,fulfillment_type,fulfillment_at,subtotal,total,created_by,notes) VALUES(?,?,'new','manual',?,?,?,?,?,?)',[$number,(int)($_POST['customer_id']??0)?:null,$_POST['fulfillment_type']??'pickup',$_POST['fulfillment_at']?:null,$subtotal,$subtotal,$uid,trim($_POST['notes']??'')?:null]);
                 $db->insert('INSERT INTO order_items(order_id,product_id,quantity,unit_price,line_total) VALUES(?,?,?,?,?)',[$orderId,$productId,$qty,$product['price'],$subtotal]);
                 audit('order.created','order',$orderId,null,['order_number'=>$number,'total'=>$subtotal]);flash('success','Order created.');redirect('?page=orders');
