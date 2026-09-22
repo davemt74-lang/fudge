@@ -294,6 +294,33 @@ final class ProductionExecutionService
 
     public function commitMaterials(int $batchId, int $userId): array
     {
+        $items=$this->db->all(
+            'SELECT item_type,item_id
+             FROM production_batch_materials
+             WHERE batch_id=?
+             ORDER BY item_type,item_id',
+            [$batchId]
+        );
+        $locks=[];
+        try{
+            foreach($items as $item){
+                $lockName='fudge_inventory_'.$item['item_type'].'_'.$item['item_id'];
+                $acquired=(int)$this->db->scalar('SELECT GET_LOCK(?,5)',[$lockName])===1;
+                if(!$acquired){
+                    throw new RuntimeException('Another inventory operation is using '.$this->itemName($item['item_type'],(int)$item['item_id']).'. Try again after it finishes.');
+                }
+                $locks[]=$lockName;
+            }
+            return $this->commitMaterialsUnderLocks($batchId,$userId);
+        }finally{
+            foreach(array_reverse($locks) as $lockName){
+                try{$this->db->scalar('SELECT RELEASE_LOCK(?)',[$lockName]);}catch(Throwable $ignored){}
+            }
+        }
+    }
+
+    private function commitMaterialsUnderLocks(int $batchId, int $userId): array
+    {
         return $this->db->transaction(function(Database $db) use ($batchId,$userId) {
             $batch=$db->one('SELECT * FROM production_batches WHERE id=? FOR UPDATE',[$batchId]);
             if(!$batch) throw new RuntimeException('Production batch not found.');
