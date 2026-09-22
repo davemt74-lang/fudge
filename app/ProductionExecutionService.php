@@ -3,7 +3,8 @@ final class ProductionExecutionService
 {
     public function __construct(
         private Database $db,
-        private UnitConversionService $units
+        private UnitConversionService $units,
+        private InventoryService $inventory
     ) {}
 
     public function createManualBatch(?string $scheduledFor, ?string $notes, int $userId): int
@@ -303,22 +304,12 @@ final class ProductionExecutionService
              ORDER BY item_type,item_id',
             [$batchId]
         );
-        $locks=[];
-        try{
-            foreach($items as $item){
-                $lockName='fudge_inventory_'.$item['item_type'].'_'.$item['item_id'];
-                $acquired=(int)$this->db->scalar('SELECT GET_LOCK(?,5)',[$lockName])===1;
-                if(!$acquired){
-                    throw new RuntimeException('Another inventory operation is using '.$this->itemName($item['item_type'],(int)$item['item_id']).'. Try again after it finishes.');
-                }
-                $locks[]=$lockName;
-            }
-            return $this->commitMaterialsUnderLocks($batchId,$userId);
-        }finally{
-            foreach(array_reverse($locks) as $lockName){
-                try{$this->db->scalar('SELECT RELEASE_LOCK(?)',[$lockName]);}catch(Throwable $ignored){}
-            }
-        }
+        if(!$items) throw new RuntimeException('Initialize batch materials before committing consumption.');
+
+        return $this->inventory->withItemLocks(
+            $items,
+            fn(): array => $this->commitMaterialsUnderLocks($batchId,$userId)
+        );
     }
 
     private function commitMaterialsUnderLocks(int $batchId, int $userId): array
