@@ -530,3 +530,20 @@ AND p.permission_key IN ('production.record_qc','production.track_labor');
 
 INSERT INTO platform_meta(meta_key,meta_value) VALUES('phase_4','complete')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
+
+
+-- Fresh-install nested recipe version binding. Published parent recipes retain the exact
+-- nested recipe version they were built against.
+UPDATE recipe_items ri
+JOIN recipe_versions parent_rv ON parent_rv.id=ri.recipe_version_id
+SET ri.component_recipe_version_id=(
+  SELECT child_rv.id
+  FROM recipe_versions child_rv
+  WHERE child_rv.recipe_id=ri.component_id
+    AND child_rv.status='published'
+  ORDER BY child_rv.version_number DESC
+  LIMIT 1
+)
+WHERE ri.component_type='recipe'
+  AND parent_rv.status IN ('published','retired')
+  AND ri.component_recipe_version_id IS NULL;
