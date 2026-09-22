@@ -119,7 +119,7 @@ function handle_phase2b_page(string $page): never
                     $packagingId=(int)($_POST['packaging_item_id']??0);
                     $qty=(float)($_POST['quantity']??0);
                     $unit=trim($_POST['unit']??'each');
-                    if(!$productId||!$packagingId||$qty<0) throw new RuntimeException('Product, packaging item and non-negative quantity are required.');
+                    if(!$productId||!$packagingId||$qty<=0) throw new RuntimeException('Product, packaging item and a quantity greater than zero are required.');
                     if((int)$db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$unit])<1) throw new RuntimeException('Select a valid packaging unit.');
                     $impactRef=Security::reference('BOM');
                     try{$costing->captureSnapshots($uid,'product_packaging_before',$impactRef);}catch(Throwable $ignored){}
@@ -338,6 +338,10 @@ function handle_phase2b_page(string $page): never
               AND a.trigger_type=REPLACE(b.trigger_type,'_before','_after')
              JOIN products p ON p.id=a.product_id
              WHERE b.trigger_type LIKE '%_before'
+               AND (
+                    ABS(a.direct_cogs-b.direct_cogs) > 0.000001
+                    OR ABS(a.margin_pct-b.margin_pct) > 0.0001
+               )
              ORDER BY a.id DESC LIMIT 30"
         );
         echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Recent Cost Impacts</h2></div><table><thead><tr><th>Date</th><th>Product</th><th>Trigger</th><th>COGS Change</th><th>Margin Change</th><th>Status</th></tr></thead><tbody>';
