@@ -122,6 +122,20 @@ Built in v0.2.0:
 - Reorder-to-par suggestions with estimated cost
 - Purchasing and lot permissions
 
+## Phase 3 — Production Planning
+
+Built in v0.4.0:
+
+- Allocate each ordered Single / 6-Pack / 12-Pack to exact flavors
+- Aggregate order demand into a production plan
+- Expand finished recipes and nested recipes into ingredient/packaging requirements
+- Compare requirements with on-hand inventory and open purchase orders
+- Detect shortages, missing recipes, invalid product capacities and allocation gaps
+- Increase planned production above confirmed demand with automatic material recalculation
+- Lock plans against source-data drift and duplicate-order commitments
+- Launch a locked plan directly into a linked production batch
+- Move included orders into Production status at launch
+
 ## Next build phases
 
 This package establishes the production foundation. The next development passes should deepen, rather than replace, the current data model:
