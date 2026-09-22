@@ -554,31 +554,81 @@ final class ProductionExecutionService
         ?string $station,
         int $userId
     ): void {
-        $batch=$this->db->one('SELECT status FROM production_batches WHERE id=?',[$batchId]);
-        if(!$batch || in_array($batch['status'],['completed','cancelled'],true)){
-            throw new RuntimeException('Team assignments cannot change on a closed batch.');
-        }
-        $member=$this->db->one('SELECT id FROM users WHERE id=? AND status="active"',[$memberId]);
-        if(!$member) throw new RuntimeException('Select an active team member.');
+        $this->db->transaction(function(Database $db) use ($batchId,$memberId,$role,$station,$userId) {
+            $batch=$db->one('SELECT status FROM production_batches WHERE id=? FOR UPDATE',[$batchId]);
+            if(!$batch || in_array($batch['status'],['completed','cancelled'],true)){
+                throw new RuntimeException('Team assignments cannot change on a closed batch.');
+            }
+            $member=$db->one('SELECT id FROM users WHERE id=? AND status="active"',[$memberId]);
+            if(!$member) throw new RuntimeException('Select an active team member.');
 
-        $this->db->exec(
-            'INSERT INTO batch_assignments(batch_id,user_id,assignment_role,station,created_by)
-             VALUES (?,?,?,?,?)
-             ON DUPLICATE KEY UPDATE assignment_role=VALUES(assignment_role),station=VALUES(station)',
-            [$batchId,$memberId,$role ?: null,$station ?: null,$userId]
-        );
+            $db->exec(
+                'INSERT INTO batch_assignments(batch_id,user_id,assignment_role,station,created_by)
+                 VALUES (?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE assignment_role=VALUES(assignment_role),station=VALUES(station)',
+                [$batchId,$memberId,$role ?: null,$station ?: null,$userId]
+            );
+        });
     }
 
     public function removeAssignment(int $batchId, int $memberId): void
     {
-        $batch=$this->db->one('SELECT status FROM production_batches WHERE id=?',[$batchId]);
-        if(!$batch || in_array($batch['status'],['completed','cancelled'],true)){
-            throw new RuntimeException('Team assignments cannot change on a closed batch.');
-        }
-        $this->db->exec(
-            'DELETE FROM batch_assignments WHERE batch_id=? AND user_id=?',
-            [$batchId,$memberId]
-        );
+        $this->db->transaction(function(Database $db) use ($batchId,$memberId) {
+            $batch=$db->one('SELECT status FROM production_batches WHERE id=? FOR UPDATE',[$batchId]);
+            if(!$batch || in_array($batch['status'],['completed','cancelled'],true)){
+                throw new RuntimeException('Team assignments cannot change on a closed batch.');
+            }
+            $db->exec(
+                'DELETE FROM batch_assignments WHERE batch_id=? AND user_id=?',
+                [$batchId,$memberId]
+            );
+        });
+    }
+
+    public function deleteWaste(int $wasteId): void
+    {
+        $this->db->transaction(function(Database $db) use ($wasteId) {
+            $waste=$db->one(
+                'SELECT pw.*,pb.status batch_status
+                 FROM production_waste pw
+                 JOIN production_batches pb ON pb.id=pw.batch_id
+                 WHERE pw.id=? FOR UPDATE',
+                [$wasteId]
+            );
+            if(!$waste) throw new RuntimeException('Waste entry not found.');
+            if(in_array($waste['batch_status'],['completed','cancelled'],true)){
+                throw new RuntimeException('Waste cannot be changed on a closed batch.');
+            }
+            $db->exec('DELETE FROM production_waste WHERE id=?',[$wasteId]);
+            $db->exec(
+                'UPDATE production_batch_items
+                 SET waste_quantity=GREATEST(0,waste_quantity-?)
+                 WHERE id=?',
+                [$waste['quantity'],$waste['batch_item_id']]
+            );
+        });
+    }
+
+    public function cancelManualBatch(int $batchId): void
+    {
+        $this->db->transaction(function(Database $db) use ($batchId) {
+            $batch=$db->one('SELECT * FROM production_batches WHERE id=? FOR UPDATE',[$batchId]);
+            if(!$batch) throw new RuntimeException('Production batch not found.');
+            if(!empty($batch['production_plan_id'])){
+                throw new RuntimeException('A batch launched from a production plan cannot be cancelled here.');
+            }
+            if($batch['status']!=='scheduled'){
+                throw new RuntimeException('Only an unstarted manual batch can be cancelled.');
+            }
+            if((int)$db->scalar(
+                'SELECT COUNT(*) FROM production_batch_materials
+                 WHERE batch_id=? AND status="committed"',
+                [$batchId]
+            )>0){
+                throw new RuntimeException('A batch with committed material use cannot be cancelled.');
+            }
+            $db->exec('UPDATE production_batches SET status="cancelled" WHERE id=?',[$batchId]);
+        });
     }
 
     public function clockIn(int $batchId, int $userId, ?string $station): int
