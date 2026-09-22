@@ -43,11 +43,22 @@ Initial repo-ready Fudge Donuts Ops foundation.
 - Feature permission catalog
 - LLM provider records and AI feature routes
 
-### Verification
-- PHP syntax: PASS
-- Encryption round trip: PASS
-- Schema contract: PASS
-- Permission contract: PASS
-- Secret hygiene: PASS
+### Verification gates
+The repository now runs these checks in GitHub Actions on PHP 8.1 and PHP 8.3:
+- PHP syntax
+- Encryption round trip
+- Schema contract
+- Permission contract
+- Migration manager contract
+- Secret hygiene
 
-A live MySQL/MariaDB integration test is still required after the repository is created/deployed because this build environment did not provide a PDO MySQL driver or database daemon.
+The current V1 foundation PR should not be treated as the final installable V1 release until those checks are green and the later MySQL/MariaDB integration and end-to-end release gates are added.
+
+### Install / upgrade policy
+- Do **not** install development phases individually.
+- Perform one fresh install when V1 is complete.
+- The installer asks only for database connection details and the first Owner user.
+- No manual application security/API key is required during install.
+- Future releases are applied by uploading files, visiting `upgrade.php`, and clicking the update button.
+- Applied migration versions are recorded in `schema_migrations`.
+
