@@ -506,6 +506,14 @@ final class RecipeService
         if ($type === 'recipe' && $componentId === (int)$version['recipe_id']) {
             throw new RuntimeException('A recipe cannot contain itself.');
         }
+        $duplicate = (int)$this->db->scalar(
+            'SELECT COUNT(*) FROM recipe_items
+             WHERE recipe_version_id=? AND component_type=? AND component_id=?',
+            [$versionId,$type,$componentId]
+        );
+        if ($duplicate > 0) {
+            throw new RuntimeException('That component is already in this recipe version. Edit the existing row instead.');
+        }
         $sort = (int)$this->db->scalar('SELECT COALESCE(MAX(sort_order),0)+10 FROM recipe_items WHERE recipe_version_id=?',[$versionId]);
         return $this->db->insert(
             'INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
