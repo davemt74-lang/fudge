@@ -222,3 +222,83 @@ ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
 
 INSERT INTO platform_meta (meta_key,meta_value) VALUES ('phase_2a','complete')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
+
+
+-- Starter supplier-item references. These are editable operational seed values and
+-- intentionally carry a fixed reference date so the UI does not imply they are live prices.
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-CHOC-45LB','4.5 lb semi-sweet chocolate chips',4.5,'lb',13.61,0.189028,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-CHOC-SS'
+WHERE s.name='Costco Business'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-CHOC-45LB');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-COND-6X14','6 × 14 oz sweetened condensed milk',84,'oz',15.88,0.189048,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-COND-MILK'
+WHERE s.name='Costco Business'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-COND-6X14');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-BUTTER-1LB','1 lb unsalted butter',1,'lb',2.51,0.156875,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-BUTTER'
+WHERE s.name='Restaurant Depot'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-BUTTER-1LB');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-CREAM-32OZ','32 fl oz heavy cream',32,'fl oz',4.76,0.148750,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-CREAM'
+WHERE s.name='Restaurant Depot'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-CREAM-32OZ');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-OREO-6276','62.76 oz Oreo cookies',62.76,'oz',12.47,0.198693,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-OREO'
+WHERE s.name='Costco Business'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-OREO-6276');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-REESE-54','54 oz peanut butter cups',54,'oz',47.32,0.876296,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-PBCUP'
+WHERE s.name='Costco Business'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-REESE-54');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'ingredient',i.id,'STARTER-SPRINKLES-7LB','7 lb rainbow sprinkles',7,'lb',21.34,0.190536,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN ingredients i ON i.sku='ING-SPRINKLES'
+WHERE s.name='Restaurant Depot'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-SPRINKLES-7LB');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'packaging',p.id,'STARTER-WRAP-1000','1,000 clear individual wrappers',1000,'each',28.98,0.028980,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN packaging_items p ON p.sku='PKG-WRAP'
+WHERE s.name='Packaging Supplier'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-WRAP-1000');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'packaging',p.id,'STARTER-STICKER-1000','1,000 branded back stickers',1000,'each',90.00,0.090000,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN packaging_items p ON p.sku='PKG-STICKER'
+WHERE s.name='Packaging Supplier'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-STICKER-1000');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'packaging',p.id,'STARTER-BOX6-200','200 six-pack boxes',200,'each',60.00,0.300000,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN packaging_items p ON p.sku='PKG-BOX6'
+WHERE s.name='Packaging Supplier'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-BOX6-200');
+
+INSERT INTO supplier_items
+(supplier_id,item_type,item_id,supplier_sku,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update)
+SELECT s.id,'packaging',p.id,'STARTER-BOX12-125','125 twelve-pack boxes',125,'each',62.25,0.498000,1,'2026-09-21 00:00:00'
+FROM suppliers s JOIN packaging_items p ON p.sku='PKG-BOX12'
+WHERE s.name='Packaging Supplier'
+AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-BOX12-125');
