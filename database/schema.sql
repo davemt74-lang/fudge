@@ -311,6 +311,29 @@ CREATE TABLE IF NOT EXISTS order_item_flavors (
   CONSTRAINT fk_oif_flavor FOREIGN KEY(flavor_id) REFERENCES flavors(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS production_plans (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  plan_code VARCHAR(100) NOT NULL UNIQUE,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  status ENUM('draft','locked','in_production','completed','cancelled') NOT NULL DEFAULT 'draft',
+  unallocated_units INT NOT NULL DEFAULT 0,
+  blocking_issue_count INT NOT NULL DEFAULT 0,
+  warning_count INT NOT NULL DEFAULT 0,
+  source_fingerprint CHAR(64) NULL,
+  built_at DATETIME NULL,
+  notes TEXT NULL,
+  created_by BIGINT UNSIGNED NULL,
+  locked_by BIGINT UNSIGNED NULL,
+  locked_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_plan_created_by FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_plan_locked_by FOREIGN KEY(locked_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_plan_dates(start_date,end_date),
+  INDEX idx_plan_status(status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS production_batches (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   production_plan_id BIGINT UNSIGNED NULL,
@@ -584,29 +607,6 @@ CREATE TABLE IF NOT EXISTS product_cost_snapshots (
   INDEX idx_pcs_product(product_id,created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
-CREATE TABLE IF NOT EXISTS production_plans (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  plan_code VARCHAR(100) NOT NULL UNIQUE,
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  status ENUM('draft','locked','in_production','completed','cancelled') NOT NULL DEFAULT 'draft',
-  unallocated_units INT NOT NULL DEFAULT 0,
-  blocking_issue_count INT NOT NULL DEFAULT 0,
-  warning_count INT NOT NULL DEFAULT 0,
-  source_fingerprint CHAR(64) NULL,
-  built_at DATETIME NULL,
-  notes TEXT NULL,
-  created_by BIGINT UNSIGNED NULL,
-  locked_by BIGINT UNSIGNED NULL,
-  locked_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_plan_created_by FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,
-  CONSTRAINT fk_plan_locked_by FOREIGN KEY(locked_by) REFERENCES users(id) ON DELETE SET NULL,
-  INDEX idx_plan_dates(start_date,end_date),
-  INDEX idx_plan_status(status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS production_plan_orders (
   production_plan_id BIGINT UNSIGNED NOT NULL,
