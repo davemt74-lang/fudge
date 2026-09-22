@@ -220,6 +220,10 @@ final class InventoryCountService
         if (!in_array($scope, ['all','ingredient','packaging'], true)) throw new RuntimeException('Invalid inventory count scope.');
 
         return $this->db->transaction(function(Database $db) use ($scope,$notes,$userId) {
+            $openCount = (int)$db->scalar('SELECT COUNT(*) FROM inventory_counts WHERE status="open"');
+            if ($openCount > 0) {
+                throw new RuntimeException('Complete or cancel the existing open inventory count before starting another.');
+            }
             $number = 'COUNT-' . date('Ymd-His') . '-' . random_int(10,99);
             $countId = $db->insert(
                 'INSERT INTO inventory_counts (count_number,status,created_by,notes) VALUES (?,"open",?,?)',
@@ -296,6 +300,20 @@ final class InventoryCountService
             );
             if ($missing > 0) throw new RuntimeException('Count every item before completing this inventory count.');
 
+            $movement = (int)$db->scalar(
+                'SELECT COUNT(*)
+                 FROM inventory_transactions t
+                 JOIN inventory_count_items ci
+                   ON ci.inventory_count_id=?
+                  AND ci.item_type=t.item_type
+                  AND ci.item_id=t.item_id
+                 WHERE t.created_at > ?',
+                [$countId,$count['started_at']]
+            );
+            if ($movement > 0) {
+                throw new RuntimeException('Inventory changed after this physical count started. Cancel it and start a fresh count so reconciliation cannot overwrite newer stock movements.');
+            }
+
             $items = $db->all(
                 'SELECT * FROM inventory_count_items WHERE inventory_count_id=? ORDER BY id',
                 [$countId]
@@ -341,7 +359,7 @@ final class InventoryCountService
 
 final class ReorderService
 {
-    public function __construct(private Database $db) {}
+    public function __construct(private Database $db, private UnitConversionService $units) {}
 
     public function suggestions(): array
     {
@@ -367,9 +385,43 @@ final class ReorderService
         $items = array_merge($ingredients,$packaging);
         foreach ($items as &$item) {
             $item['suggested_quantity'] = max(0, (float)$item['target_stock'] - (float)$item['on_hand']);
-            $item['estimated_cost'] = $item['best_unit_cost'] !== null
-                ? $item['suggested_quantity'] * (float)$item['best_unit_cost']
-                : null;
+            $item['recommended_supplier'] = null;
+            $item['recommended_supplier_item_id'] = null;
+            $item['packages_to_buy'] = null;
+            $item['purchase_quantity'] = null;
+            $item['estimated_cost'] = null;
+
+            $options = $this->db->all(
+                'SELECT si.*,s.name supplier_name
+                 FROM supplier_items si
+                 JOIN suppliers s ON s.id=si.supplier_id AND s.is_active=1
+                 WHERE si.item_type=? AND si.item_id=? AND si.package_price>0 AND si.package_quantity>0
+                 ORDER BY si.is_preferred DESC,si.unit_cost ASC,si.package_price ASC',
+                [$item['item_type'],$item['id']]
+            );
+
+            foreach ($options as $option) {
+                try {
+                    $packageInventoryQty = $this->units->convert(
+                        (float)$option['package_quantity'],
+                        (string)$option['package_unit'],
+                        (string)$item['unit']
+                    );
+                } catch (Throwable $e) {
+                    continue;
+                }
+                if ($packageInventoryQty <= 0) continue;
+
+                $packages = (int)ceil($item['suggested_quantity'] / $packageInventoryQty);
+                if ($packages < 1) $packages = 1;
+
+                $item['recommended_supplier'] = $option['supplier_name'];
+                $item['recommended_supplier_item_id'] = (int)$option['id'];
+                $item['packages_to_buy'] = $packages;
+                $item['purchase_quantity'] = $packages * $packageInventoryQty;
+                $item['estimated_cost'] = $packages * (float)$option['package_price'];
+                break;
+            }
         }
         unset($item);
 
