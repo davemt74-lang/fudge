@@ -102,9 +102,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'save_product':
                 require_permission('products.manage');
                 $id=(int)($_POST['id']??0);$data=[trim($_POST['name']??''),trim($_POST['sku']??''),$_POST['product_type']??'box',(int)($_POST['box_capacity']??0)?:null,(float)($_POST['price']??0),(int)($_POST['is_active']??1)];
-                if ($id) $db->exec('UPDATE products SET name=?,sku=?,product_type=?,box_capacity=?,price=?,is_active=? WHERE id=?',[...$data,$id]);
+                if($data[0]===''||$data[1]==='') throw new RuntimeException('Product name and SKU are required.');
+                if((float)$data[4]<0) throw new RuntimeException('Product price cannot be negative.');
+                $impactRef=Security::reference('PRODUCT');
+                if($id){try{$costing->captureSnapshots($uid,'product_price_before',$impactRef);}catch(Throwable $ignored){}$db->exec('UPDATE products SET name=?,sku=?,product_type=?,box_capacity=?,price=?,is_active=? WHERE id=?',[...$data,$id]);}
                 else $id=$db->insert('INSERT INTO products(name,sku,product_type,box_capacity,price,is_active) VALUES(?,?,?,?,?,?)',$data);
-                audit('product.saved','product',$id,null,$data);flash('success','Product saved.');redirect('?page=products');
+                try{$costing->captureSnapshots($uid,$id&&isset($_POST['id'])&&((int)$_POST['id'])>0?'product_price_after':'product_created',$impactRef);}catch(Throwable $ignored){}
+                audit('product.saved','product',$id,null,$data+['cost_impact_reference'=>$impactRef]);flash('success','Product saved.');redirect('?page=products');
             case 'save_flavor':
                 require_permission('flavors.manage');
                 $id=(int)($_POST['id']??0);$name=trim($_POST['name']??'');$slug=trim($_POST['slug']??'');$data=[$name,$slug,trim($_POST['description']??'')?:null,trim($_POST['image_url']??'')?:null,(float)($_POST['target_weight_oz']??0)?:null,(int)($_POST['seasonal']??0),(int)($_POST['is_active']??1)];
