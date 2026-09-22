@@ -5,16 +5,59 @@ final class InventoryService
 
     public function adjust(string $itemType, int $itemId, float $qty, string $unit, string $reason, ?int $lotId = null, ?int $userId = null): int
     {
-        if (!in_array($itemType, ['ingredient','packaging'], true)) throw new InvalidArgumentException('Invalid inventory item type.');
-        return $this->db->insert(
-            'INSERT INTO inventory_transactions (item_type,item_id,lot_id,quantity_delta,unit,reason,created_by,created_at) VALUES (?,?,?,?,?,?,?,NOW())',
-            [$itemType,$itemId,$lotId,$qty,$unit,$reason,$userId]
+        if (!in_array($itemType, ['ingredient','packaging'], true)) {
+            throw new InvalidArgumentException('Invalid inventory item type.');
+        }
+
+        return $this->withItemLocks(
+            [['item_type'=>$itemType,'item_id'=>$itemId]],
+            fn(): int => $this->db->insert(
+                'INSERT INTO inventory_transactions
+                 (item_type,item_id,lot_id,quantity_delta,unit,reason,created_by,created_at)
+                 VALUES (?,?,?,?,?,?,?,NOW())',
+                [$itemType,$itemId,$lotId,$qty,$unit,$reason,$userId]
+            )
         );
     }
 
     public function onHand(string $itemType, int $itemId): float
     {
-        return (float)$this->db->scalar('SELECT COALESCE(SUM(quantity_delta),0) FROM inventory_transactions WHERE item_type=? AND item_id=?', [$itemType,$itemId]);
+        return (float)$this->db->scalar(
+            'SELECT COALESCE(SUM(quantity_delta),0)
+             FROM inventory_transactions WHERE item_type=? AND item_id=?',
+            [$itemType,$itemId]
+        );
+    }
+
+    public function withItemLocks(array $items, callable $callback): mixed
+    {
+        $lockNames=[];
+        foreach($items as $item){
+            $type=(string)($item['item_type']??'');
+            $id=(int)($item['item_id']??0);
+            if(!in_array($type,['ingredient','packaging'],true)||$id<1){
+                throw new InvalidArgumentException('Invalid inventory lock reference.');
+            }
+            $lockNames['fudge_inventory_'.$type.'_'.$id]=true;
+        }
+        $lockNames=array_keys($lockNames);
+        sort($lockNames,SORT_STRING);
+
+        $held=[];
+        try{
+            foreach($lockNames as $lockName){
+                $acquired=(int)$this->db->scalar('SELECT GET_LOCK(?,5)',[$lockName])===1;
+                if(!$acquired){
+                    throw new RuntimeException('Another inventory operation is currently using one of these items. Try again after it finishes.');
+                }
+                $held[]=$lockName;
+            }
+            return $callback();
+        }finally{
+            foreach(array_reverse($held) as $lockName){
+                try{$this->db->scalar('SELECT RELEASE_LOCK(?)',[$lockName]);}catch(Throwable $ignored){}
+            }
+        }
     }
 }
 
