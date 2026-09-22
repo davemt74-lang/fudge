@@ -12,51 +12,54 @@ final class DemandPlanningService
     {
         if ($quantity < 0) throw new RuntimeException('Flavor allocation cannot be negative.');
 
-        $item = $this->db->one(
-            'SELECT oi.*,o.status,p.box_capacity,p.name product_name
-             FROM order_items oi
-             JOIN orders o ON o.id=oi.order_id
-             JOIN products p ON p.id=oi.product_id
-             WHERE oi.id=?',
-            [$orderItemId]
-        );
-        if (!$item) throw new RuntimeException('Order item not found.');
-        if (!in_array($item['status'], self::ELIGIBLE_STATUSES, true)) {
-            throw new RuntimeException('Flavor allocation can only be changed before packing begins.');
-        }
-
-        $flavor = $this->db->one('SELECT id,name FROM flavors WHERE id=? AND is_active=1',[$flavorId]);
-        if (!$flavor) throw new RuntimeException('Select an active flavor.');
-
-        $capacity = max(1,(int)($item['box_capacity'] ?: 1));
-        $maximum = $capacity * max(1,(int)$item['quantity']);
-        $other = (int)$this->db->scalar(
-            'SELECT COALESCE(SUM(quantity),0)
-             FROM order_item_flavors
-             WHERE order_item_id=? AND flavor_id<>?',
-            [$orderItemId,$flavorId]
-        );
-
-        if ($other + $quantity > $maximum) {
-            throw new RuntimeException(
-                'Flavor allocations cannot exceed '.$maximum.' unit'.($maximum===1?'':'s').' for this order item.'
+        $this->db->transaction(function(Database $db) use ($orderItemId,$flavorId,$quantity) {
+            $item = $db->one(
+                'SELECT oi.*,o.status,p.box_capacity,p.name product_name
+                 FROM order_items oi
+                 JOIN orders o ON o.id=oi.order_id
+                 JOIN products p ON p.id=oi.product_id
+                 WHERE oi.id=? FOR UPDATE',
+                [$orderItemId]
             );
-        }
+            if (!$item) throw new RuntimeException('Order item not found.');
+            if (!in_array($item['status'], self::ELIGIBLE_STATUSES, true)) {
+                throw new RuntimeException('Flavor allocation can only be changed before packing begins.');
+            }
 
-        if ($quantity === 0) {
-            $this->db->exec(
-                'DELETE FROM order_item_flavors WHERE order_item_id=? AND flavor_id=?',
+            $flavor = $db->one('SELECT id,name FROM flavors WHERE id=? AND is_active=1',[$flavorId]);
+            if (!$flavor) throw new RuntimeException('Select an active flavor.');
+
+            $capacity = max(1,(int)($item['box_capacity'] ?: 1));
+            $maximum = $capacity * max(1,(int)$item['quantity']);
+            $db->all('SELECT id FROM order_item_flavors WHERE order_item_id=? FOR UPDATE',[$orderItemId]);
+            $other = (int)$db->scalar(
+                'SELECT COALESCE(SUM(quantity),0)
+                 FROM order_item_flavors
+                 WHERE order_item_id=? AND flavor_id<>?',
                 [$orderItemId,$flavorId]
             );
-            return;
-        }
 
-        $this->db->exec(
-            'INSERT INTO order_item_flavors(order_item_id,flavor_id,quantity)
-             VALUES(?,?,?)
-             ON DUPLICATE KEY UPDATE quantity=VALUES(quantity)',
-            [$orderItemId,$flavorId,$quantity]
-        );
+            if ($other + $quantity > $maximum) {
+                throw new RuntimeException(
+                    'Flavor allocations cannot exceed '.$maximum.' unit'.($maximum===1?'':'s').' for this order item.'
+                );
+            }
+
+            if ($quantity === 0) {
+                $db->exec(
+                    'DELETE FROM order_item_flavors WHERE order_item_id=? AND flavor_id=?',
+                    [$orderItemId,$flavorId]
+                );
+                return;
+            }
+
+            $db->exec(
+                'INSERT INTO order_item_flavors(order_item_id,flavor_id,quantity)
+                 VALUES(?,?,?)
+                 ON DUPLICATE KEY UPDATE quantity=VALUES(quantity)',
+                [$orderItemId,$flavorId,$quantity]
+            );
+        });
     }
 
     public function createPlan(string $startDate, string $endDate, ?string $notes, int $userId): int
@@ -289,11 +292,13 @@ final class DemandPlanningService
 
     public function cancel(int $planId): void
     {
-        $plan=$this->db->one('SELECT status FROM production_plans WHERE id=?',[$planId]);
-        if(!$plan || in_array($plan['status'],['completed','cancelled'],true)) {
-            throw new RuntimeException('This production plan cannot be cancelled.');
-        }
-        $this->db->exec('UPDATE production_plans SET status="cancelled" WHERE id=?',[$planId]);
+        $this->db->transaction(function(Database $db) use ($planId) {
+            $plan=$db->one('SELECT status FROM production_plans WHERE id=? FOR UPDATE',[$planId]);
+            if(!$plan || !in_array($plan['status'],['draft','locked'],true)) {
+                throw new RuntimeException('Only draft or locked production plans can be cancelled.');
+            }
+            $db->exec('UPDATE production_plans SET status="cancelled" WHERE id=?',[$planId]);
+        });
     }
 
     public function sourceFingerprint(string $startDate, string $endDate): string
