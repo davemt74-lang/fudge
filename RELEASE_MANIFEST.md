@@ -1,4 +1,4 @@
-# Release Manifest — 0.1.0
+# Release Manifest — 0.2.0
 
 ## Build state
 
@@ -62,3 +62,31 @@ The current V1 foundation PR should not be treated as the final installable V1 r
 - Future releases are applied by uploading files, visiting `upgrade.php`, and clicking the update button.
 - Applied migration versions are recorded in `schema_migrations`.
 
+
+
+## Phase 2A — Purchasing, Receiving & Inventory Reconciliation
+
+### Added
+- Purchase order creation by supplier
+- Purchase-order line items using supplier-item package/cost snapshots
+- Submit / partial receive / full receive / cancel workflow
+- Over-receipt prevention
+- Receiving sessions and receiving-item audit records
+- Ingredient lot creation on receipt, with automatic internal lot IDs when vendor lots are absent
+- Optional expiration dates and FEFO-ready lot data
+- Packaging receiving without artificial food lots
+- Inventory ledger postings for every receipt
+- Physical inventory count snapshots
+- Save-progress count workflow
+- Completion gate requiring every item to be counted
+- Reconciliation transactions for count variances
+- Count history
+- Reorder suggestions using reorder point → target/par quantity
+- Estimated reorder cost from available supplier unit pricing
+- Purchasing and lot permissions
+- Purchasing access added to Manager, Inventory/Purchasing, Bookkeeping and Viewer role defaults as appropriate
+- Admin seed corrected to receive the full permission catalog
+- Phase 2A migration and CI contracts
+
+### V1 install behavior
+The fresh V1 installer receives the current Phase 2A schema directly and baselines all shipped migrations. Existing installed systems will receive Phase 2A through `upgrade.php`.
