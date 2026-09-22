@@ -244,32 +244,38 @@ final class ProductionExecutionService
         return $this->db->transaction(function(Database $db) use ($batchId,$userId) {
             $batch=$db->one('SELECT * FROM production_batches WHERE id=? FOR UPDATE',[$batchId]);
             if(!$batch) throw new RuntimeException('Production batch not found.');
-            if(!array_key_exists($batch['status'],self::STAGES)) {
-                throw new RuntimeException('This batch is not in an advanceable production stage.');
-            }
-            if($batch['status']==='boxed') {
-                throw new RuntimeException('Use Complete Batch after boxing.');
-            }
+            $current=$db->one(
+                'SELECT * FROM production_batch_steps
+                 WHERE batch_id=? AND step_key=? FOR UPDATE',
+                [$batchId,$batch['status']]
+            );
+            if(!$current) throw new RuntimeException('This batch is not in an advanceable production stage.');
 
-            $keys=array_keys(self::STAGES);
-            $index=array_search($batch['status'],$keys,true);
-            $next=$keys[$index+1];
+            $next=$db->one(
+                'SELECT * FROM production_batch_steps
+                 WHERE batch_id=? AND sort_order>?
+                 ORDER BY sort_order,id LIMIT 1',
+                [$batchId,$current['sort_order']]
+            );
+            if(!$next) {
+                throw new RuntimeException('Use Complete Batch after the final production stage.');
+            }
 
             $db->exec(
                 'UPDATE production_batch_steps
                  SET status="completed",completed_at=NOW(),completed_by=?
-                 WHERE batch_id=? AND step_key=?',
-                [$userId,$batchId,$batch['status']]
+                 WHERE id=?',
+                [$userId,$current['id']]
             );
             $db->exec(
                 'UPDATE production_batch_steps
                  SET status="in_progress",started_at=COALESCE(started_at,NOW()),started_by=COALESCE(started_by,?)
-                 WHERE batch_id=? AND step_key=?',
-                [$userId,$batchId,$next]
+                 WHERE id=?',
+                [$userId,$next['id']]
             );
-            $db->exec('UPDATE production_batches SET status=? WHERE id=?',[$next,$batchId]);
+            $db->exec('UPDATE production_batches SET status=? WHERE id=?',[$next['step_key'],$batchId]);
 
-            return $next;
+            return (string)$next['step_key'];
         });
     }
 
