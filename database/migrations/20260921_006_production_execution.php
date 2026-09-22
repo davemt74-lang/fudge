@@ -66,6 +66,12 @@ return [
                AND ri.component_recipe_version_id IS NULL"
         );
 
+        // Stage keys are data-driven from production_stages.
+        $pdo->exec(
+            "ALTER TABLE production_batches
+             MODIFY status VARCHAR(60) NOT NULL DEFAULT 'scheduled'"
+        );
+
         if(!$indexExists($pdo,'production_batch_items','uq_batch_flavor')){
             $pdo->exec(
                 "UPDATE production_batch_items a
