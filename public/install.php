@@ -8,6 +8,7 @@ if (is_file($configPath)) {
 }
 
 $error = null;
+$configTempPath = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $host = trim($_POST['host'] ?? '127.0.0.1');
     $port = (int)($_POST['port'] ?? 3306);
@@ -24,6 +25,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($ownerName === '') throw new RuntimeException('Enter the first user name.');
         if (!filter_var($ownerEmail, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Enter a valid first-user email address.');
         if (strlen($ownerPassword) < 10) throw new RuntimeException('First-user password must be at least 10 characters.');
+        $configDir = dirname($configPath);
+        if (!is_dir($configDir) || !is_writable($configDir)) {
+            throw new RuntimeException('The config directory must be writable during installation.');
+        }
+
+        $config = [
+            'app' => [
+                'name' => 'Fudge Donuts Ops',
+                'base_url' => '',
+                'timezone' => 'America/Phoenix',
+                'debug' => false,
+                'key' => bin2hex(random_bytes(32)),
+            ],
+            'db' => [
+                'host' => $host,
+                'port' => $port,
+                'database' => $database,
+                'username' => $username,
+                'password' => $password,
+                'charset' => 'utf8mb4',
+            ],
+        ];
+        $php = "<?php\nreturn " . var_export($config, true) . ";\n";
+        $configTempPath = $configPath . '.tmp.' . bin2hex(random_bytes(6));
+        if (file_put_contents($configTempPath, $php, LOCK_EX) === false) {
+            throw new RuntimeException('Could not prepare the application configuration file.');
+        }
+        @chmod($configTempPath, 0600);
 
         $serverDsn = sprintf('mysql:host=%s;port=%d;charset=utf8mb4', $host, $port);
         $pdo = new PDO($serverDsn, $username, $password, [
@@ -71,13 +100,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare('INSERT INTO users (name,email,password_hash,job_title,status) VALUES (?,?,?,?,"active")');
-            $stmt->execute([$ownerName,$ownerEmail,password_hash($ownerPassword,PASSWORD_DEFAULT),'Owner']);
-            $userId = (int)$pdo->lastInsertId();
+            $passwordHash = password_hash($ownerPassword,PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare(
+                'INSERT INTO users (name,email,password_hash,job_title,status)
+                 VALUES (?,?,?,?,"active")
+                 ON DUPLICATE KEY UPDATE
+                   name=VALUES(name),
+                   password_hash=VALUES(password_hash),
+                   job_title="Owner",
+                   status="active"'
+            );
+            $stmt->execute([$ownerName,$ownerEmail,$passwordHash,'Owner']);
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE email=? LIMIT 1');
+            $stmt->execute([$ownerEmail]);
+            $userId = (int)$stmt->fetchColumn();
+            if (!$userId) throw new RuntimeException('Could not create the first Owner user.');
 
             $ownerRoleId = (int)$pdo->query("SELECT id FROM roles WHERE slug='owner'")->fetchColumn();
             if (!$ownerRoleId) throw new RuntimeException('Owner role seed is missing.');
-            $stmt = $pdo->prepare('INSERT INTO user_roles (user_id,role_id) VALUES (?,?)');
+            $stmt = $pdo->prepare('INSERT IGNORE INTO user_roles (user_id,role_id) VALUES (?,?)');
             $stmt->execute([$userId,$ownerRoleId]);
 
             $migrationFiles = glob(dirname(__DIR__) . '/database/migrations/*.php') ?: [];
@@ -96,33 +137,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw $e;
         }
 
-        $config = [
-            'app' => [
-                'name' => 'Fudge Donuts Ops',
-                'base_url' => '',
-                'timezone' => 'America/Phoenix',
-                'debug' => false,
-                // Generated automatically. The installer never asks the user for a security/API key.
-                'key' => bin2hex(random_bytes(32)),
-            ],
-            'db' => [
-                'host' => $host,
-                'port' => $port,
-                'database' => $database,
-                'username' => $username,
-                'password' => $password,
-                'charset' => 'utf8mb4',
-            ],
-        ];
-
-        $php = "<?php\nreturn " . var_export($config, true) . ";\n";
-        if (file_put_contents($configPath, $php, LOCK_EX) === false) {
-            throw new RuntimeException('Could not write config/config.php. Make the config directory writable during installation.');
+        if (!$configTempPath || !@rename($configTempPath, $configPath)) {
+            throw new RuntimeException('Database setup completed but the configuration file could not be finalized. Correct config-directory permissions and run the installer again.');
         }
+        @chmod($configPath, 0600);
+        $configTempPath = null;
 
         header('Location: index.php?page=login&installed=1');
         exit;
     } catch (Throwable $e) {
+        if ($configTempPath && is_file($configTempPath)) @unlink($configTempPath);
         $error = $e->getMessage();
     }
 }
