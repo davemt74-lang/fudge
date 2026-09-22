@@ -223,12 +223,18 @@ final class ProductionExecutionService
                 $this->initializeBatch($batchId);
             }
 
-            $db->exec('UPDATE production_batches SET status="prep" WHERE id=?',[$batchId]);
+            $first=$db->one(
+                'SELECT * FROM production_batch_steps
+                 WHERE batch_id=? ORDER BY sort_order,id LIMIT 1',
+                [$batchId]
+            );
+            if(!$first) throw new RuntimeException('Initialize at least one production stage before starting the batch.');
+            $db->exec('UPDATE production_batches SET status=? WHERE id=?',[$first['step_key'],$batchId]);
             $db->exec(
                 'UPDATE production_batch_steps
                  SET status="in_progress",started_at=NOW(),started_by=?
-                 WHERE batch_id=? AND step_key="prep"',
-                [$userId,$batchId]
+                 WHERE id=?',
+                [$userId,$first['id']]
             );
         });
     }
