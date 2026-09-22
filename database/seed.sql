@@ -466,3 +466,28 @@ AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND
 
 INSERT INTO platform_meta (meta_key,meta_value) VALUES ('phase_2b','complete')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
+
+
+INSERT IGNORE INTO permissions(permission_key,module,label) VALUES
+('planning.view','Production Planning','View production plans'),
+('planning.manage','Production Planning','Create and rebuild production plans'),
+('planning.lock','Production Planning','Lock production plans'),
+('orders.allocate_flavors','Orders','Allocate order items to flavors');
+
+INSERT IGNORE INTO role_permissions(role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug IN ('owner','admin','manager','production-lead')
+AND p.permission_key IN ('planning.view','planning.manage','planning.lock','orders.allocate_flavors');
+
+INSERT IGNORE INTO role_permissions(role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug IN ('production-team','inventory-purchasing','packing')
+AND p.permission_key='planning.view';
+
+INSERT IGNORE INTO role_permissions(role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug='sales'
+AND p.permission_key IN ('planning.view','orders.allocate_flavors');
+
+INSERT INTO platform_meta(meta_key,meta_value) VALUES('phase_3a','complete')
+ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
