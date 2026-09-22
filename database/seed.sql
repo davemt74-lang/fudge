@@ -216,7 +216,7 @@ INSERT IGNORE INTO llm_feature_settings (feature_key,enabled) VALUES
 ('supplier_price_analysis',0),
 ('recipe_assistant',0);
 
-INSERT INTO platform_meta (meta_key,meta_value) VALUES ('app_version','0.1.0')
+INSERT INTO platform_meta (meta_key,meta_value) VALUES ('app_version','0.4.0')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
 
 
