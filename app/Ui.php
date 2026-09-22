@@ -70,7 +70,7 @@ final class Ui
 
     public static function statusBadge(string $status): string
     {
-        $class = in_array($status,['active','paid','ready','fulfilled','completed','published','success'],true) ? 'good' : (in_array($status,['cancelled','suspended','error'],true) ? 'bad' : 'warn');
+        $class = in_array($status,['active','paid','ready','fulfilled','completed','published','success','pass','committed','available'],true) ? 'good' : (in_array($status,['cancelled','suspended','error','fail','expired'],true) ? 'bad' : 'warn');
         return '<span class="badge '.$class.'">'.h(ucwords(str_replace(['-','_'],' ',$status))).'</span>';
     }
 }
