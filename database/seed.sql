@@ -1,0 +1,209 @@
+INSERT IGNORE INTO roles (name,slug,description,is_system,is_active) VALUES
+('Owner','owner','Full platform access',1,1),
+('Admin','admin','Administrative access',1,1),
+('Manager','manager','Operations management',1,1),
+('Production Lead','production-lead','Lead production operations',1,1),
+('Production Team','production-team','Production floor access',1,1),
+('Packing / Fulfillment','packing','Packing and fulfillment',1,1),
+('Inventory / Purchasing','inventory-purchasing','Inventory and supplier purchasing',1,1),
+('Sales / Customer Service','sales','Orders and customers',1,1),
+('Bookkeeping','bookkeeping','Financial reporting access',1,1),
+('Viewer','viewer','Read-only selected access',1,1);
+
+INSERT IGNORE INTO permissions (permission_key,module,label) VALUES
+('dashboard.view','Dashboard','View dashboard'),
+('ingredients.view','Ingredients','View ingredients'),
+('ingredients.manage','Ingredients','Add/edit ingredients'),
+('packaging.view','Packaging','View packaging'),
+('packaging.manage','Packaging','Add/edit packaging'),
+('inventory.view','Inventory','View inventory'),
+('inventory.adjust','Inventory','Adjust inventory'),
+('inventory.receive','Inventory','Receive stock'),
+('inventory.count','Inventory','Perform inventory counts'),
+('inventory.view_cost','Inventory','View inventory costs'),
+('suppliers.view','Suppliers','View suppliers'),
+('suppliers.manage','Suppliers','Add/edit suppliers'),
+('suppliers.update_prices','Suppliers','Update supplier pricing'),
+('suppliers.view_price_history','Suppliers','View supplier price history'),
+('suppliers.bulk_update_prices','Suppliers','Bulk update supplier pricing'),
+('recipes.view','Recipes','View recipes'),
+('recipes.edit','Recipes','Edit recipes'),
+('recipes.publish','Recipes','Publish recipe versions'),
+('recipes.view_cost','Recipes','View recipe costs'),
+('flavors.view','Flavors','View flavors'),
+('flavors.manage','Flavors','Add/edit flavors'),
+('products.view','Products','View products'),
+('products.manage','Products','Add/edit products and prices'),
+('production.view','Production','View production'),
+('production.create_batch','Production','Create production batches'),
+('production.update_batch','Production','Update production batches'),
+('production.close_batch','Production','Close production batches'),
+('orders.view','Orders','View orders'),
+('orders.create','Orders','Create orders'),
+('orders.edit','Orders','Edit orders'),
+('orders.refund','Orders','Issue refunds'),
+('customers.view','Customers','View customers'),
+('customers.manage','Customers','Add/edit customers'),
+('reports.view','Reports','View reports'),
+('reports.view_profit','Reports','View profit and margin'),
+('team.view','Team','View team members'),
+('team.manage_members','Team','Manage team members'),
+('team.manage_roles','Team','Manage roles and permissions'),
+('ai.view','AI','View AI tools'),
+('ai.use','AI','Use AI assistant'),
+('ai.manage_providers','AI','Manage AI providers'),
+('ai.manage_api_keys','AI','Manage AI API keys'),
+('ai.view_usage','AI','View AI usage'),
+('audit.view','Audit','View audit log'),
+('settings.manage','Settings','Manage system settings');
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.slug='owner';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','ingredients.view','ingredients.manage','packaging.view','packaging.manage','inventory.view','inventory.adjust','inventory.receive','inventory.count','inventory.view_cost',
+'suppliers.view','suppliers.manage','suppliers.update_prices','suppliers.view_price_history',
+'recipes.view','recipes.edit','recipes.publish','recipes.view_cost','flavors.view','flavors.manage','products.view','products.manage',
+'production.view','production.create_batch','production.update_batch','production.close_batch',
+'orders.view','orders.create','orders.edit','customers.view','customers.manage','reports.view','reports.view_profit',
+'team.view','team.manage_members','ai.view','ai.use','ai.view_usage','audit.view'
+) WHERE r.slug='manager';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','production.view','production.create_batch','production.update_batch','production.close_batch',
+'recipes.view','inventory.view','inventory.adjust','flavors.view'
+) WHERE r.slug='production-lead';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','production.view','production.update_batch','recipes.view','inventory.view'
+) WHERE r.slug='production-team';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','orders.view','orders.edit','customers.view','production.view'
+) WHERE r.slug='packing';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','ingredients.view','ingredients.manage','packaging.view','packaging.manage','inventory.view','inventory.adjust','inventory.receive','inventory.count','inventory.view_cost',
+'suppliers.view','suppliers.manage','suppliers.update_prices','suppliers.view_price_history','suppliers.bulk_update_prices'
+) WHERE r.slug='inventory-purchasing';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','orders.view','orders.create','orders.edit','customers.view','customers.manage','products.view','flavors.view'
+) WHERE r.slug='sales';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','reports.view','reports.view_profit','orders.view','inventory.view_cost','suppliers.view','suppliers.view_price_history'
+) WHERE r.slug='bookkeeping';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
+'dashboard.view','orders.view','production.view','inventory.view','recipes.view','flavors.view','products.view','suppliers.view','team.view'
+) WHERE r.slug='viewer';
+
+INSERT IGNORE INTO ingredient_categories (name) VALUES
+('Chocolate & Fudge'),('Dairy'),('Cookies & Crumbs'),('Candy'),('Sauces & Glazes'),('Nuts & Crunch'),('Decorations');
+
+INSERT IGNORE INTO allergens (name) VALUES ('Milk'),('Soy'),('Wheat'),('Peanuts'),('Tree Nuts'),('Egg');
+
+INSERT IGNORE INTO units (name,symbol,unit_type,base_multiplier) VALUES
+('Each','each','count',1),
+('Ounce','oz','weight',1),
+('Pound','lb','weight',16),
+('Gram','g','weight',0.035274),
+('Fluid Ounce','fl oz','volume',1),
+('Cup','cup','volume',8);
+
+INSERT IGNORE INTO ingredients (name,sku,category_id,inventory_unit,reorder_point,target_stock,storage_location) VALUES
+('Semi-Sweet Chocolate Chips','ING-CHOC-SS',(SELECT id FROM ingredient_categories WHERE name='Chocolate & Fudge'),'oz',160,480,'Pantry'),
+('Sweetened Condensed Milk','ING-COND-MILK',(SELECT id FROM ingredient_categories WHERE name='Dairy'),'oz',84,252,'Pantry'),
+('Unsalted Butter','ING-BUTTER',(SELECT id FROM ingredient_categories WHERE name='Dairy'),'oz',32,96,'Refrigerator'),
+('Heavy Cream','ING-CREAM',(SELECT id FROM ingredient_categories WHERE name='Dairy'),'fl oz',32,96,'Refrigerator'),
+('Vanilla Extract','ING-VANILLA',(SELECT id FROM ingredient_categories WHERE name='Sauces & Glazes'),'fl oz',4,12,'Pantry'),
+('Fine Salt','ING-SALT',(SELECT id FROM ingredient_categories WHERE name='Decorations'),'oz',8,24,'Pantry'),
+('Oreo Cookies','ING-OREO',(SELECT id FROM ingredient_categories WHERE name='Cookies & Crumbs'),'oz',32,96,'Pantry'),
+('Peanut Butter Cups','ING-PBCUP',(SELECT id FROM ingredient_categories WHERE name='Candy'),'oz',24,72,'Pantry'),
+('Caramel Sauce','ING-CARAMEL',(SELECT id FROM ingredient_categories WHERE name='Sauces & Glazes'),'oz',24,72,'Pantry'),
+('Rainbow Sprinkles','ING-SPRINKLES',(SELECT id FROM ingredient_categories WHERE name='Decorations'),'oz',16,48,'Pantry'),
+('Mini Marshmallows','ING-MARSH',(SELECT id FROM ingredient_categories WHERE name='Decorations'),'oz',16,48,'Pantry'),
+('Graham Crackers','ING-GRAHAM',(SELECT id FROM ingredient_categories WHERE name='Cookies & Crumbs'),'oz',16,48,'Pantry'),
+('Cookie Butter','ING-COOKIEBUTTER',(SELECT id FROM ingredient_categories WHERE name='Sauces & Glazes'),'oz',16,48,'Pantry'),
+('Biscoff Cookies','ING-BISCOFF',(SELECT id FROM ingredient_categories WHERE name='Cookies & Crumbs'),'oz',16,48,'Pantry'),
+('Cinnamon','ING-CINNAMON',(SELECT id FROM ingredient_categories WHERE name='Decorations'),'oz',4,12,'Pantry');
+
+INSERT IGNORE INTO packaging_items (name,sku,inventory_unit,current_unit_cost,reorder_point,target_stock) VALUES
+('Clear Individual Wrapper','PKG-WRAP','each',0.0300,250,1000),
+('Branded Back Sticker','PKG-STICKER','each',0.0600,250,1000),
+('6-Pack Box','PKG-BOX6','each',0.3000,25,100),
+('12-Pack Box','PKG-BOX12','each',0.5000,25,100),
+('Box Flavor Insert','PKG-INSERT','each',0.0500,50,200);
+
+INSERT IGNORE INTO suppliers (name,website,notes) VALUES
+('Costco Business','https://www.costcobusinessdelivery.com','Starter supplier record; verify local/current pricing before purchasing.'),
+('Restaurant Depot','https://www.restaurantdepot.com','Starter supplier record; verify local/current pricing before purchasing.'),
+('Packaging Supplier',NULL,'Replace with preferred packaging vendor.');
+
+INSERT IGNORE INTO products (name,sku,product_type,box_capacity,price) VALUES
+('Single Fudge Donut','FD-SINGLE','single',1,4.99),
+('Build a 6-Pack','FD-6','box',6,24.99),
+('Build a 12-Pack','FD-12','box',12,44.99);
+
+INSERT IGNORE INTO flavors (name,slug,description,target_weight_oz,seasonal,is_active) VALUES
+('Classic Chocolate','classic-chocolate','Chocolate fudge with glossy chocolate topping and chocolate finish.',3.5,0,1),
+('Cookies & Cream','cookies-cream','Chocolate fudge with cookie crumble and cream-style finish.',3.5,0,1),
+('Peanut Butter Cup','peanut-butter-cup','Chocolate fudge with peanut butter cup topping.',3.5,0,1),
+('Salted Caramel','salted-caramel','Chocolate fudge with caramel drizzle and sea-salt finish.',3.5,0,1),
+('S''mores','smores','Chocolate fudge with graham and marshmallow topping.',3.5,0,1),
+('Birthday Cake','birthday-cake','Celebration-style fudge donut with colorful sprinkles.',3.5,0,1),
+('Cookie Butter','cookie-butter','Fudge donut with cookie butter and cookie crumble.',3.5,0,1),
+('Cinnamon Crunch','cinnamon-crunch','Fudge donut with cinnamon crumble finish.',3.5,0,1);
+
+INSERT IGNORE INTO recipes (name,recipe_type) VALUES
+('Chocolate Fudge Base','base'),
+('Chocolate Glaze','component');
+
+INSERT IGNORE INTO recipe_versions (recipe_id,version_number,yield_quantity,yield_unit,status,published_at)
+SELECT id,1,12,'each','published',NOW() FROM recipes WHERE name='Chocolate Fudge Base';
+INSERT IGNORE INTO recipe_versions (recipe_id,version_number,yield_quantity,yield_unit,status,published_at)
+SELECT id,1,12,'each','published',NOW() FROM recipes WHERE name='Chocolate Glaze';
+
+INSERT IGNORE INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,21,'oz',10 FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN ingredients i ON i.sku='ING-CHOC-SS' WHERE r.name='Chocolate Fudge Base' AND rv.version_number=1;
+INSERT IGNORE INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,14,'oz',20 FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN ingredients i ON i.sku='ING-COND-MILK' WHERE r.name='Chocolate Fudge Base' AND rv.version_number=1;
+INSERT IGNORE INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,1,'oz',30 FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN ingredients i ON i.sku='ING-BUTTER' WHERE r.name='Chocolate Fudge Base' AND rv.version_number=1;
+
+INSERT IGNORE INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,6,'oz',10 FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN ingredients i ON i.sku='ING-CHOC-SS' WHERE r.name='Chocolate Glaze' AND rv.version_number=1;
+INSERT IGNORE INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,1,'oz',20 FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN ingredients i ON i.sku='ING-BUTTER' WHERE r.name='Chocolate Glaze' AND rv.version_number=1;
+INSERT IGNORE INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,1.5,'fl oz',30 FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN ingredients i ON i.sku='ING-CREAM' WHERE r.name='Chocolate Glaze' AND rv.version_number=1;
+
+INSERT IGNORE INTO recipes (name,recipe_type,flavor_id)
+SELECT CONCAT(name,' Fudge Donut'),'finished',id FROM flavors;
+
+INSERT IGNORE INTO recipe_versions (recipe_id,version_number,yield_quantity,yield_unit,status,published_at)
+SELECT r.id,1,1,'each','published',NOW() FROM recipes r WHERE r.recipe_type='finished';
+
+INSERT IGNORE INTO llm_providers (name,provider_type,base_url,default_model,enabled,is_default) VALUES
+('OpenAI','openai_compatible','https://api.openai.com/v1','',0,1),
+('Anthropic','anthropic','https://api.anthropic.com','',0,0),
+('OpenAI-Compatible / Custom','openai_compatible','http://127.0.0.1:11434/v1','',0,0);
+
+INSERT IGNORE INTO llm_feature_settings (feature_key,enabled) VALUES
+('operations_assistant',0),
+('production_recommendations',0),
+('inventory_analysis',0),
+('supplier_price_analysis',0),
+('recipe_assistant',0);
+
+INSERT INTO platform_meta (meta_key,meta_value) VALUES ('app_version','0.1.0')
+ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
