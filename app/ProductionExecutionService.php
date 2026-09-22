@@ -128,35 +128,36 @@ final class ProductionExecutionService
 
             $this->clearSetup($batchId,$db);
 
-            $sort=10;
-            foreach(self::STAGES as $key=>$label){
+            $stages=$db->all(
+                'SELECT stage_key,label,sort_order
+                 FROM production_stages
+                 WHERE is_active=1
+                 ORDER BY sort_order,id'
+            );
+            if(!$stages) throw new RuntimeException('At least one active production stage is required.');
+            foreach($stages as $stage){
                 $db->exec(
                     'INSERT INTO production_batch_steps(batch_id,step_key,label,sort_order,status)
                      VALUES (?,?,?,?,"pending")',
-                    [$batchId,$key,$label,$sort]
+                    [$batchId,$stage['stage_key'],$stage['label'],$stage['sort_order']]
                 );
-                $sort+=10;
             }
 
+            $checks=$db->all(
+                'SELECT check_key,label,sort_order
+                 FROM production_qc_templates
+                 WHERE is_active=1
+                 ORDER BY sort_order,id'
+            );
+            if(!$checks) throw new RuntimeException('At least one active production QC template is required.');
             foreach($items as $item){
-                $checks=[
-                    ['shape','Shape / mold release'],
-                    ['target_weight','Target finished weight'],
-                    ['glaze','Glaze coverage / appearance'],
-                    ['topping','Topping amount / finish'],
-                    ['wrapper','Individual wrapper sealed'],
-                    ['sticker','Back sticker applied'],
-                    ['count','Finished count verified'],
-                ];
-                $sort=10;
-                foreach($checks as [$key,$label]){
+                foreach($checks as $check){
                     $db->exec(
                         'INSERT INTO production_qc_checks
                          (batch_id,batch_item_id,check_key,label,sort_order,result)
                          VALUES (?,?,?,?,?,"pending")',
-                        [$batchId,$item['id'],$key,$label,$sort]
+                        [$batchId,$item['id'],$check['check_key'],$check['label'],$check['sort_order']]
                     );
-                    $sort+=10;
                 }
             }
 
@@ -202,10 +203,10 @@ final class ProductionExecutionService
             }
 
             return [
-                'steps'=>count(self::STAGES),
+                'steps'=>count($stages),
                 'batch_items'=>count($items),
                 'materials'=>count($requirements),
-                'qc_checks'=>count($items)*7,
+                'qc_checks'=>count($items)*count($checks),
             ];
         });
     }
