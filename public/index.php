@@ -77,8 +77,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 require_permission('suppliers.manage');
                 $supplierId=(int)($_POST['supplier_id']??0);$type=$_POST['item_type']??'';$itemId=(int)($_POST['item_id']??0);$qty=(float)($_POST['package_quantity']??1);$price=(float)($_POST['package_price']??0);
                 if (!$supplierId||!$itemId||!in_array($type,['ingredient','packaging'],true)) throw new RuntimeException('Supplier and item are required.');
-                $unitCost=$qty>0?$price/$qty:0;
-                $id=$db->insert('INSERT INTO supplier_items(supplier_id,item_type,item_id,supplier_sku,product_url,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW())',[$supplierId,$type,$itemId,trim($_POST['supplier_sku']??'')?:null,trim($_POST['product_url']??'')?:null,trim($_POST['package_description']??'')?:null,$qty,trim($_POST['package_unit']??'each'),$price,$unitCost,(int)($_POST['is_preferred']??0)]);
+                $packageUnit=trim($_POST['package_unit']??'each');
+                $inventoryUnit=$type==='ingredient'
+                    ? (string)$db->scalar('SELECT inventory_unit FROM ingredients WHERE id=?',[$itemId])
+                    : (string)$db->scalar('SELECT inventory_unit FROM packaging_items WHERE id=?',[$itemId]);
+                if($inventoryUnit==='') throw new RuntimeException('Linked inventory item was not found.');
+                $unitCost=$units->normalizedUnitCost($price,$qty,$packageUnit,$inventoryUnit);
+                $id=$db->insert('INSERT INTO supplier_items(supplier_id,item_type,item_id,supplier_sku,product_url,package_description,package_quantity,package_unit,package_price,unit_cost,is_preferred,last_price_update) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW())',[$supplierId,$type,$itemId,trim($_POST['supplier_sku']??'')?:null,trim($_POST['product_url']??'')?:null,trim($_POST['package_description']??'')?:null,$qty,$packageUnit,$price,$unitCost,(int)($_POST['is_preferred']??0)]);
                 audit('supplier_item.created','supplier_item',$id,null,['price'=>$price]);flash('success','Supplier item linked.');redirect('?page=suppliers');
             case 'update_supplier_price':
                 require_permission('suppliers.update_prices');
