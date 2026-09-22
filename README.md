@@ -39,6 +39,24 @@ A self-contained PHP/MySQL operations platform for a small-batch Fudge Donut bus
 
 The installer creates the database if the supplied database user has permission. Otherwise create an empty database first and use credentials with table-creation permissions.
 
+### Install once
+
+The intended release workflow is to perform the installer only once, when V1 is ready for deployment. The installer asks only for the database connection plus the first Owner user. It does **not** ask for a security key or LLM API key. Internal encryption material is generated automatically.
+
+## Database upgrades
+
+After the first installation, future releases use the built-in migration manager:
+
+1. Upload the newer application files.
+2. Sign in as a user with `settings.manage`.
+3. Visit `/upgrade.php`.
+4. Review the pending migration list.
+5. Click **Install Updates** once.
+
+The migration manager stores applied versions in `schema_migrations` and runs only migrations that have not already been installed. Never rerun `install.php` for a normal version update.
+
+New schema changes belong in `database/migrations/` as ordered, versioned PHP migration files. The V1 installer baselines all migrations shipped with that V1 release so a brand-new installation starts fully current.
+
 ## First operational setup
 
 The catalogs are preloaded, but opening inventory is intentionally **zero**. Go to **Inventory** and record an `Initial Count` for ingredients and packaging. This creates auditable opening ledger entries instead of inventing stock.
@@ -90,7 +108,19 @@ Run:
 bash tests/run.sh
 ```
 
-The container used to create this package did not include a PDO MySQL driver or MySQL daemon, so this release was syntax/static tested here rather than integration-tested against a live MySQL instance. The test script includes PHP lint, encryption round-trip, expected-schema checks, permission-contract checks and secret-leak checks.
+The CI suite runs PHP lint, encryption round-trip, expected-schema checks, permission-contract checks, migration-manager contracts and secret-leak checks on PHP 8.1 and PHP 8.3. A live MySQL/MariaDB integration gate will be added during V1 release hardening.
+
+## Phase 2A — Purchasing & Receiving
+
+Built in v0.2.0:
+
+- Purchase orders and supplier-item line snapshots
+- Submit, partial receive, full receive and cancel lifecycle
+- Inventory receipt ledger postings
+- Ingredient lots and expiration dates
+- Physical counts with auditable reconciliation
+- Reorder-to-par suggestions with estimated cost
+- Purchasing and lot permissions
 
 ## Next build phases
 
@@ -99,7 +129,7 @@ This package establishes the production foundation. The next development passes 
 1. Full mix-and-match 6/12 box composer on order entry and customer storefront.
 2. Recipe COGS recursion through nested recipes and live supplier price changes.
 3. Production demand aggregation from orders and automatic ingredient requirements.
-4. Purchase orders, receiving, lots, FIFO and expiration workflows.
+4. FEFO/FIFO consumption from received lots during production.
 5. Finished-goods reservation/depletion and visual packing station.
 6. QC checklists, yield variance, waste approvals and labor clock-in/out.
 7. Flavor-level profitability, pack margin and price-impact simulation.
