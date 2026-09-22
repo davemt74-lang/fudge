@@ -189,5 +189,11 @@ return [
              ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value)"
         );
         $stmt->execute();
+
+        $stmt=$pdo->prepare(
+            "INSERT INTO platform_meta(meta_key,meta_value) VALUES('app_version','0.4.0')
+             ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value)"
+        );
+        $stmt->execute();
     },
 ];
