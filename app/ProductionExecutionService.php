@@ -1,17 +1,6 @@
 <?php
 final class ProductionExecutionService
 {
-    private const STAGES = [
-        'prep' => 'Prep',
-        'mixed' => 'Mixed',
-        'molded' => 'Molded',
-        'chilling' => 'Chilling',
-        'glazed' => 'Glazed',
-        'topped' => 'Topped',
-        'wrapped' => 'Wrapped',
-        'boxed' => 'Boxed',
-    ];
-
     public function __construct(
         private Database $db,
         private UnitConversionService $units
