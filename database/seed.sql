@@ -508,14 +508,15 @@ INSERT IGNORE INTO permissions(permission_key,module,label) VALUES
 ('production.record_waste','Production','Record finished-unit waste'),
 ('production.assign_team','Production','Assign team members to batches'),
 ('production.track_labor','Production','Clock labor against production batches'),
-('production.complete_batch','Production','Complete batches and create finished inventory');
+('production.complete_batch','Production','Complete batches and create finished inventory'),
+('production.manage_settings','Production','Manage production stages QC templates and waste reasons');
 
 INSERT IGNORE INTO role_permissions(role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p
 WHERE r.slug IN ('owner','admin','manager','production-lead')
 AND p.permission_key IN (
   'production.manage_materials','production.record_qc','production.record_waste',
-  'production.assign_team','production.track_labor','production.complete_batch'
+  'production.assign_team','production.track_labor','production.complete_batch','production.manage_settings'
 );
 
 INSERT IGNORE INTO role_permissions(role_id,permission_id)
@@ -547,3 +548,25 @@ SET ri.component_recipe_version_id=(
 WHERE ri.component_type='recipe'
   AND parent_rv.status IN ('published','retired')
   AND ri.component_recipe_version_id IS NULL;
+
+
+INSERT INTO production_stages(stage_key,label,sort_order,is_active) VALUES
+('prep','Prep',10,1),
+('mixed','Mixed',20,1),
+('molded','Molded',30,1),
+('chilling','Chilling',40,1),
+('glazed','Glazed',50,1),
+('topped','Topped',60,1),
+('wrapped','Wrapped',70,1),
+('boxed','Boxed',80,1)
+ON DUPLICATE KEY UPDATE label=VALUES(label),sort_order=VALUES(sort_order);
+
+INSERT INTO production_qc_templates(check_key,label,sort_order,is_active) VALUES
+('shape','Shape / mold release',10,1),
+('target_weight','Target finished weight',20,1),
+('glaze','Glaze coverage / appearance',30,1),
+('topping','Topping amount / finish',40,1),
+('wrapper','Individual wrapper sealed',50,1),
+('sticker','Back sticker applied',60,1),
+('count','Finished count verified',70,1)
+ON DUPLICATE KEY UPDATE label=VALUES(label),sort_order=VALUES(sort_order);
