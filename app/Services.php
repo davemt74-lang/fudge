@@ -24,6 +24,8 @@ final class SupplierPricingService
 
     public function updatePrice(int $supplierItemId, float $newPrice, ?float $packageQty, ?string $sourceRef, string $notes, int $userId): void
     {
+        if ($newPrice < 0) throw new RuntimeException('Supplier price cannot be negative.');
+        if ($packageQty !== null && $packageQty <= 0) throw new RuntimeException('Package quantity must be greater than zero.');
         $this->db->transaction(function(Database $db) use ($supplierItemId,$newPrice,$packageQty,$sourceRef,$notes,$userId) {
             $item = $db->one('SELECT * FROM supplier_items WHERE id=? FOR UPDATE', [$supplierItemId]);
             if (!$item) throw new RuntimeException('Supplier item not found.');
