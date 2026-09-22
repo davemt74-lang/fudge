@@ -842,15 +842,20 @@ final class ProductionExecutionService
                 continue;
             }
             if($type==='recipe'){
-                $nested=$this->db->one(
-                    'SELECT rv.id,rv.yield_unit
-                     FROM recipes r
-                     JOIN recipe_versions rv ON rv.recipe_id=r.id
-                     WHERE r.id=? AND rv.status="published"
-                     ORDER BY rv.version_number DESC LIMIT 1',
-                    [$id]
-                );
-                if(!$nested) throw new RuntimeException('Nested recipe has no published version.');
+                $nested=!empty($component['component_recipe_version_id'])
+                    ? $this->db->one(
+                        'SELECT id,yield_unit FROM recipe_versions WHERE id=? AND recipe_id=?',
+                        [(int)$component['component_recipe_version_id'],$id]
+                    )
+                    : $this->db->one(
+                        'SELECT rv.id,rv.yield_unit
+                         FROM recipes r
+                         JOIN recipe_versions rv ON rv.recipe_id=r.id
+                         WHERE r.id=? AND rv.status="published"
+                         ORDER BY rv.version_number DESC LIMIT 1',
+                        [$id]
+                    );
+                if(!$nested) throw new RuntimeException('Nested recipe has no usable bound version.');
                 $nestedTarget=$this->units->convert($qty,$component['unit'],$nested['yield_unit']);
                 $this->expandRecipeVersion((int)$nested['id'],$nestedTarget,$requirements,$stack);
                 continue;
