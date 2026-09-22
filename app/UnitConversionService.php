@@ -17,13 +17,33 @@ final class UnitConversionService
         if (!$from || !$to) {
             throw new RuntimeException("Unknown unit conversion: {$fromUnit} → {$toUnit}.");
         }
-        if ($from['unit_type'] !== $to['unit_type']) {
-            throw new RuntimeException("Cannot convert {$fromUnit} to {$toUnit}; unit types do not match.");
-        }
+        return self::convertByFactors(
+            $quantity,
+            (string)$from['unit_type'],
+            (float)$from['base_multiplier'],
+            (string)$to['unit_type'],
+            (float)$to['base_multiplier'],
+            $fromUnit,
+            $toUnit
+        );
+    }
 
-        // base_multiplier expresses each unit in the system base unit for its type.
-        $baseQuantity = $quantity * (float)$from['base_multiplier'];
-        return $baseQuantity / (float)$to['base_multiplier'];
+    public static function convertByFactors(
+        float $quantity,
+        string $fromType,
+        float $fromMultiplier,
+        string $toType,
+        float $toMultiplier,
+        string $fromLabel = 'source',
+        string $toLabel = 'target'
+    ): float {
+        if ($fromType !== $toType) {
+            throw new RuntimeException("Cannot convert {$fromLabel} to {$toLabel}; unit types do not match.");
+        }
+        if ($fromMultiplier <= 0 || $toMultiplier <= 0) {
+            throw new RuntimeException('Unit conversion multipliers must be greater than zero.');
+        }
+        return ($quantity * $fromMultiplier) / $toMultiplier;
     }
 
     public function normalizedUnitCost(float $packagePrice, float $packageQuantity, string $packageUnit, string $inventoryUnit): float
