@@ -1,7 +1,7 @@
 <?php
 final class PurchasingService
 {
-    public function __construct(private Database $db) {}
+    public function __construct(private Database $db, private UnitConversionService $units) {}
 
     public function createPurchaseOrder(int $supplierId, ?string $expectedAt, ?string $notes, int $userId): int
     {
@@ -119,10 +119,18 @@ final class PurchasingService
                     throw new RuntimeException('Received quantity cannot exceed the remaining ordered quantity for ' . $item['description'] . '.');
                 }
 
-                $receivedQty = $packages * (float)$item['package_quantity'];
-                $unitCost = (float)$item['package_quantity'] > 0
-                    ? (float)$item['package_price'] / (float)$item['package_quantity']
-                    : 0;
+                $packageQtyReceived = $packages * (float)$item['package_quantity'];
+                $receivedQty = $this->units->convert(
+                    $packageQtyReceived,
+                    (string)$item['package_unit'],
+                    (string)$item['inventory_unit']
+                );
+                $unitCost = $this->units->normalizedUnitCost(
+                    (float)$item['package_price'],
+                    (float)$item['package_quantity'],
+                    (string)$item['package_unit'],
+                    (string)$item['inventory_unit']
+                );
 
                 $lotId = null;
                 $lotNumber = trim((string)($receipt['lot_number'] ?? ''));
