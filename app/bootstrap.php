@@ -38,7 +38,7 @@ $inventory = new InventoryService($db);
 $pricing = new SupplierPricingService($db, $units);
 $purchasing = new PurchasingService($db, $units);
 $inventoryCounts = new InventoryCountService($db);
-$reorders = new ReorderService($db);
+$reorders = new ReorderService($db, $units);
 $llm = new LlmService($db, $config['app']['key']);
 
 function h(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
