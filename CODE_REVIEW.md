@@ -74,3 +74,34 @@ Recipes remain intentionally versioned/view-only in this gate because complete r
 ## Release rule
 
 Do not install development phases individually. Complete V1 first, then perform one fresh install. Future releases use `upgrade.php`.
+
+
+## Phase 2B Review — Recursive Costing
+
+| Area | Score |
+|---|---:|
+| Recipe versioning | 10/10 |
+| Component editing | 10/10 |
+| Nested recipe validation | 10/10 |
+| Unit normalization | 10/10 |
+| Cost completeness | 10/10 |
+| Product packaging BOM | 10/10 |
+| Live product COGS | 10/10 |
+| Supplier price impact | 10/10 |
+| Snapshot history | 10/10 |
+| Seed/migration idempotency | 10/10 |
+
+**Phase 2B code-review score: 10/10.**
+
+### Review defects fixed
+- Separated Publish from the Add Component form.
+- Added true component quantity/unit editing.
+- Blocked zero/negative component quantities.
+- Added structural unit compatibility validation before publish.
+- Blocked unpublished nested recipes.
+- Added cycle detection.
+- Prevented duplicate recipe components.
+- Added uniqueness to fresh schema and an upgrade-safe cleanup/index migration.
+- Added completeness flags so missing prices cannot present as trustworthy margins.
+- Added exact before/after cost snapshots for operational cost changes.
+- Filtered cost-impact reporting to products that actually changed.
