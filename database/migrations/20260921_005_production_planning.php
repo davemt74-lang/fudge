@@ -126,9 +126,32 @@ return [
         if ((int)$columnStmt->fetchColumn() === 0) {
             $pdo->exec(
                 'ALTER TABLE production_batches
-                 ADD COLUMN production_plan_id BIGINT UNSIGNED NULL AFTER id,
-                 ADD CONSTRAINT fk_batch_plan FOREIGN KEY(production_plan_id) REFERENCES production_plans(id) ON DELETE SET NULL,
+                 ADD COLUMN production_plan_id BIGINT UNSIGNED NULL AFTER id'
+            );
+        }
+
+        $indexStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='production_batches' AND INDEX_NAME='uq_batch_plan'"
+        );
+        $indexStmt->execute();
+        if ((int)$indexStmt->fetchColumn() === 0) {
+            $pdo->exec(
+                'ALTER TABLE production_batches
                  ADD UNIQUE KEY uq_batch_plan(production_plan_id)'
+            );
+        }
+
+        $fkStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='production_batches' AND CONSTRAINT_NAME='fk_batch_plan'"
+        );
+        $fkStmt->execute();
+        if ((int)$fkStmt->fetchColumn() === 0) {
+            $pdo->exec(
+                'ALTER TABLE production_batches
+                 ADD CONSTRAINT fk_batch_plan
+                 FOREIGN KEY(production_plan_id) REFERENCES production_plans(id) ON DELETE SET NULL'
             );
         }
 
