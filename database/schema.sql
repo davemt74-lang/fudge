@@ -313,6 +313,7 @@ CREATE TABLE IF NOT EXISTS order_item_flavors (
 
 CREATE TABLE IF NOT EXISTS production_batches (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  production_plan_id BIGINT UNSIGNED NULL,
   batch_code VARCHAR(100) NOT NULL UNIQUE,
   scheduled_for DATE NULL,
   status ENUM('scheduled','prep','mixed','molded','chilling','glazed','topped','wrapped','boxed','completed','cancelled') NOT NULL DEFAULT 'scheduled',
@@ -320,7 +321,9 @@ CREATE TABLE IF NOT EXISTS production_batches (
   created_by BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_pb_user FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_pb_user FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_batch_plan FOREIGN KEY(production_plan_id) REFERENCES production_plans(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_batch_plan(production_plan_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS production_batch_items (
