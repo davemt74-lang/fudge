@@ -78,6 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $supplierId=(int)($_POST['supplier_id']??0);$catalogRef=trim($_POST['catalog_ref']??'');$type=$_POST['item_type']??'';$itemId=(int)($_POST['item_id']??0);$qty=(float)($_POST['package_quantity']??1);$price=(float)($_POST['package_price']??0);
                 if($catalogRef!==''&&str_contains($catalogRef,':')){[$type,$rawId]=explode(':',$catalogRef,2);$itemId=(int)$rawId;}
                 if (!$supplierId||!$itemId||!in_array($type,['ingredient','packaging'],true)) throw new RuntimeException('Supplier and item are required.');
+                if($qty<=0) throw new RuntimeException('Package quantity must be greater than zero.');
+                if($price<0) throw new RuntimeException('Package price cannot be negative.');
                 $packageUnit=trim($_POST['package_unit']??'each');
                 $inventoryUnit=$type==='ingredient'
                     ? (string)$db->scalar('SELECT inventory_unit FROM ingredients WHERE id=?',[$itemId])
