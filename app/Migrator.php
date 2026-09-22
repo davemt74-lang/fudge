@@ -16,6 +16,14 @@ final class Migrator
                 applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+
+        $hasChecksum = (int)$this->db->scalar(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schema_migrations' AND COLUMN_NAME='checksum'"
+        ) > 0;
+        if (!$hasChecksum) {
+            $this->db->exec('ALTER TABLE schema_migrations ADD COLUMN checksum CHAR(64) NULL AFTER name');
+        }
     }
 
     public function appliedVersions(): array
