@@ -216,7 +216,7 @@ INSERT IGNORE INTO llm_feature_settings (feature_key,enabled) VALUES
 ('supplier_price_analysis',0),
 ('recipe_assistant',0);
 
-INSERT INTO platform_meta (meta_key,meta_value) VALUES ('app_version','0.4.0')
+INSERT INTO platform_meta (meta_key,meta_value) VALUES ('app_version','0.5.0')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
 
 
@@ -490,4 +490,43 @@ WHERE r.slug='sales'
 AND p.permission_key IN ('planning.view','orders.allocate_flavors');
 
 INSERT INTO platform_meta(meta_key,meta_value) VALUES('phase_3a','complete')
+ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
+
+
+-- Phase 4 production-execution defaults.
+INSERT IGNORE INTO waste_reasons(name,is_active) VALUES
+('Production Defect',1),
+('QC Failure',1),
+('Damaged',1),
+('Dropped',1),
+('Over / Under Weight',1),
+('Sample / Tasting',1);
+
+INSERT IGNORE INTO permissions(permission_key,module,label) VALUES
+('production.manage_materials','Production','Edit and commit batch material usage'),
+('production.record_qc','Production','Record production QC checks'),
+('production.record_waste','Production','Record finished-unit waste'),
+('production.assign_team','Production','Assign team members to batches'),
+('production.track_labor','Production','Clock labor against production batches'),
+('production.complete_batch','Production','Complete batches and create finished inventory');
+
+INSERT IGNORE INTO role_permissions(role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug IN ('owner','admin','manager','production-lead')
+AND p.permission_key IN (
+  'production.manage_materials','production.record_qc','production.record_waste',
+  'production.assign_team','production.track_labor','production.complete_batch'
+);
+
+INSERT IGNORE INTO role_permissions(role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug='production-team'
+AND p.permission_key IN ('production.record_qc','production.record_waste','production.track_labor');
+
+INSERT IGNORE INTO role_permissions(role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug='packing'
+AND p.permission_key IN ('production.record_qc','production.track_labor');
+
+INSERT INTO platform_meta(meta_key,meta_value) VALUES('phase_4','complete')
 ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);
