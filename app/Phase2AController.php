@@ -131,7 +131,8 @@ function handle_phase2a_page(string $page): never
                 $purchase = $s['packages_to_buy'] === null
                     ? 'No supplier package configured'
                     : ((int)$s['packages_to_buy'].' package'.((int)$s['packages_to_buy']===1?'':'s').' · '.number_format((float)$s['purchase_quantity'],2).' '.h($s['unit']).'<div class="muted">'.h($s['recommended_supplier']).'</div>');
-                echo '<tr><td><strong>'.h($s['name']).'</strong><div class="muted">'.h(ucfirst($s['item_type'])).'</div></td><td>'.number_format((float)$s['on_hand'],2).' '.h($s['unit']).'</td><td>'.number_format((float)$s['target_stock'],2).' '.h($s['unit']).'</td><td><strong>'.number_format((float)$s['suggested_quantity'],2).' '.h($s['unit']).'</strong></td><td>'.$purchase.'</td><td>'.($s['estimated_cost']===null?'—':'
+                echo '<tr><td><strong>'.h($s['name']).'</strong><div class="muted">'.h(ucfirst($s['item_type'])).'</div></td><td>'.number_format((float)$s['on_hand'],2).' '.h($s['unit']).'</td><td>'.number_format((float)$s['target_stock'],2).' '.h($s['unit']).'</td><td><strong>'.number_format((float)$s['suggested_quantity'],2).' '.h($s['unit']).'</strong></td><td>'.$purchase.'</td><td>'.($s['estimated_cost']===null?'—':'USD '.number_format((float)$s['estimated_cost'],2)).'</td></tr>';
+            }
             echo '</tbody></table></div>';
         }
 

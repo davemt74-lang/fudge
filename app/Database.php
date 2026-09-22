@@ -2,6 +2,7 @@
 final class Database
 {
     private PDO $pdo;
+    private int $transactionDepth = 0;
 
     public function __construct(array $config)
     {
@@ -58,13 +59,38 @@ final class Database
 
     public function transaction(callable $callback): mixed
     {
-        $this->pdo->beginTransaction();
+        $isOuter = $this->transactionDepth === 0;
+        $savepoint = 'sp_' . $this->transactionDepth;
+
+        if ($isOuter) {
+            $this->pdo->beginTransaction();
+        } else {
+            $this->pdo->exec('SAVEPOINT ' . $savepoint);
+        }
+        $this->transactionDepth++;
+
         try {
             $result = $callback($this);
-            $this->pdo->commit();
+            $this->transactionDepth--;
+
+            if ($isOuter) {
+                $this->pdo->commit();
+            } else {
+                $this->pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
             return $result;
         } catch (Throwable $e) {
-            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            $this->transactionDepth = max(0, $this->transactionDepth - 1);
+
+            if ($isOuter) {
+                if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            } else {
+                try {
+                    $this->pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $this->pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                } catch (Throwable $ignored) {
+                }
+            }
             throw $e;
         }
     }

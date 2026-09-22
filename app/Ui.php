@@ -9,6 +9,7 @@ final class Ui
             'dashboard'=>['Dashboard','dashboard.view'],
             'orders'=>['Orders','orders.view'],
             'production'=>['Production','production.view'],
+            'planning'=>['Production Planning','planning.view'],
             'inventory'=>['Inventory','inventory.view'],
             'ingredients'=>['Ingredients','ingredients.view'],
             'packaging'=>['Packaging','packaging.view'],

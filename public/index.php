@@ -39,6 +39,11 @@ if (in_array($page, ['purchasing','inventory-counts','lots'], true)) {
     handle_phase2a_page($page);
 }
 
+if ($page === 'planning') {
+    require_once dirname(__DIR__) . '/app/Phase3Controller.php';
+    handle_phase3_page($page);
+}
+
 if (in_array($page, ['recipes','costing'], true)) {
     require_once dirname(__DIR__) . '/app/Phase2BController.php';
     handle_phase2b_page($page);
@@ -112,9 +117,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 audit('supplier.price_updated','supplier_item',$supplierItemId,null,['new_price'=>(float)$_POST['new_price'],'cost_impact_reference'=>$impactRef]);flash('success','Supplier price updated, history preserved, and cost impact snapshot captured.');redirect('?page=suppliers');
             case 'save_product':
                 require_permission('products.manage');
-                $id=(int)($_POST['id']??0);$data=[trim($_POST['name']??''),trim($_POST['sku']??''),$_POST['product_type']??'box',(int)($_POST['box_capacity']??0)?:null,(float)($_POST['price']??0),(int)($_POST['is_active']??1)];
+                $id=(int)($_POST['id']??0);$capacity=(int)($_POST['box_capacity']??0);$price=(float)($_POST['price']??0);
+                $data=[trim($_POST['name']??''),trim($_POST['sku']??''),$_POST['product_type']??'box',$capacity,$price,(int)($_POST['is_active']??1)];
                 if($data[0]===''||$data[1]==='') throw new RuntimeException('Product name and SKU are required.');
-                if((float)$data[4]<0) throw new RuntimeException('Product price cannot be negative.');
+                if($capacity<1) throw new RuntimeException('Product capacity must be at least 1 finished unit.');
+                if($price<0) throw new RuntimeException('Product price cannot be negative.');
                 $impactRef=Security::reference('PRODUCT');
                 if($id){try{$costing->captureSnapshots($uid,'product_price_before',$impactRef);}catch(Throwable $ignored){}$db->exec('UPDATE products SET name=?,sku=?,product_type=?,box_capacity=?,price=?,is_active=? WHERE id=?',[...$data,$id]);}
                 else $id=$db->insert('INSERT INTO products(name,sku,product_type,box_capacity,price,is_active) VALUES(?,?,?,?,?,?)',$data);
@@ -134,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create_batch':
                 require_permission('production.create_batch');
                 $code=trim($_POST['batch_code']??''); if($code==='') $code=Security::reference('BATCH');
-                $id=$db->insert('INSERT INTO production_batches(batch_code,scheduled_for,status,notes,created_by) VALUES(?,?,'scheduled',?,?)',[$code,$_POST['scheduled_for']?:null,trim($_POST['notes']??'')?:null,$uid]);
+                $id=$db->insert("INSERT INTO production_batches(batch_code,scheduled_for,status,notes,created_by) VALUES(?,?,'scheduled',?,?)",[$code,$_POST['scheduled_for']?:null,trim($_POST['notes']??'')?:null,$uid]);
                 audit('production.batch_created','production_batch',$id,null,['batch_code'=>$code]);flash('success','Production batch created.');redirect('?page=production');
             case 'create_order':
                 require_permission('orders.create');

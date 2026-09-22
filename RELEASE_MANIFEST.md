@@ -1,4 +1,4 @@
-# Release Manifest — 0.3.0
+# Release Manifest — 0.4.0
 
 ## Build state
 
@@ -126,3 +126,39 @@ If a required ingredient or packaging cost is unavailable, the platform marks th
 
 ### Release gate
 Phase 2B is considered code-review complete only after its costing-specific static contracts and exact-head PHP 8.1 / 8.3 CI pass.
+
+
+## Phase 3 — Order Demand & Production Planning
+
+### Added
+- Order-item flavor allocation for Singles, 6-Packs and 12-Packs
+- Capacity enforcement so flavor allocations cannot exceed ordered units
+- Archived flavor allocations can be removed but cannot receive new quantities
+- Production-plan date windows up to 31 days
+- Demand aggregation by flavor across eligible orders
+- Recursive recipe expansion into ingredient and packaging requirements
+- Product-level box packaging requirements
+- Inventory-on-hand and open-PO quantities incorporated into shortage analysis
+- Draft production plans with blocking issues and warnings
+- Editable planned quantities above confirmed order demand
+- Material requirements automatically recalculate when planned production changes
+- Production-plan source fingerprints across orders, flavor allocations, recipes, packaging, flavor state, inventory and purchasing
+- Stale-plan lock protection
+- Duplicate-order protection across locked/active plans
+- Locked-plan revalidation at production launch
+- Plan → Production Batch handoff
+- Linked orders move into Production status when the plan launches
+- Production batches retain their source production-plan ID
+- Nested transaction/savepoint support for atomic plan creation and edits
+- Production Planning permissions, audit coverage and dedicated workspace
+
+### Planning safety rules
+- A plan cannot lock with unallocated order units or blocking issues.
+- Material shortages are visible warnings so purchasing can happen against a locked production schedule.
+- A locked plan cannot launch if its source data changed after lock.
+- The same order cannot be committed to multiple locked/active production plans.
+- Only draft or locked plans can be cancelled.
+- Every launched plan creates at most one linked production batch.
+
+### V1 install behavior
+The fresh V1 schema creates production planning tables before the production-batch foreign key is declared. Existing installations receive the same model through migration `20260921_005_production_planning.php`.
