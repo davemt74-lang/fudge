@@ -20,7 +20,7 @@ final class InventoryService
 
 final class SupplierPricingService
 {
-    public function __construct(private Database $db) {}
+    public function __construct(private Database $db, private ?UnitConversionService $units = null) {}
 
     public function updatePrice(int $supplierItemId, float $newPrice, ?float $packageQty, ?string $sourceRef, string $notes, int $userId): void
     {
@@ -28,7 +28,13 @@ final class SupplierPricingService
             $item = $db->one('SELECT * FROM supplier_items WHERE id=? FOR UPDATE', [$supplierItemId]);
             if (!$item) throw new RuntimeException('Supplier item not found.');
             $qty = $packageQty ?: (float)$item['package_quantity'];
-            $unitCost = $qty > 0 ? $newPrice / $qty : 0;
+            $inventoryUnit = $item['item_type'] === 'ingredient'
+                ? (string)$db->scalar('SELECT inventory_unit FROM ingredients WHERE id=?', [$item['item_id']])
+                : (string)$db->scalar('SELECT inventory_unit FROM packaging_items WHERE id=?', [$item['item_id']]);
+            if ($inventoryUnit === '') throw new RuntimeException('Linked inventory item was not found.');
+            $unitCost = $this->units
+                ? $this->units->normalizedUnitCost($newPrice, $qty, (string)$item['package_unit'], $inventoryUnit)
+                : ($qty > 0 ? $newPrice / $qty : 0);
             $db->insert('INSERT INTO supplier_price_history (supplier_item_id,old_price,new_price,package_quantity,unit_cost,source_reference,notes,effective_at,created_by) VALUES (?,?,?,?,?,?,?,NOW(),?)', [
                 $supplierItemId,$item['package_price'],$newPrice,$qty,$unitCost,$sourceRef,$notes,$userId
             ]);
