@@ -241,15 +241,23 @@ final class InventoryCountService
     {
         if (!in_array($scope, ['all','ingredient','packaging'], true)) throw new RuntimeException('Invalid inventory count scope.');
 
-        return $this->db->transaction(function(Database $db) use ($scope,$notes,$userId) {
+        $lockName='fudge_inventory_count_open';
+        $locked=(int)$this->db->scalar('SELECT GET_LOCK(?,5)',[$lockName])===1;
+        if(!$locked) throw new RuntimeException('Another inventory count operation is starting. Try again after it finishes.');
+
+        try{
+            return $this->db->transaction(function(Database $db) use ($scope,$notes,$userId) {
             $openCount = (int)$db->scalar('SELECT COUNT(*) FROM inventory_counts WHERE status="open"');
             if ($openCount > 0) {
                 throw new RuntimeException('Complete or cancel the existing open inventory count before starting another.');
             }
             $number = Security::reference('COUNT');
+            $cursor=(int)$db->scalar('SELECT COALESCE(MAX(id),0) FROM inventory_transactions');
             $countId = $db->insert(
-                'INSERT INTO inventory_counts (count_number,status,created_by,notes) VALUES (?,"open",?,?)',
-                [$number,$userId,$notes ?: null]
+                'INSERT INTO inventory_counts
+                 (count_number,status,inventory_transaction_cursor,created_by,notes)
+                 VALUES (?,"open",?,?,?)',
+                [$number,$cursor,$userId,$notes ?: null]
             );
 
             if ($scope === 'all' || $scope === 'ingredient') {
@@ -289,7 +297,10 @@ final class InventoryCountService
             }
 
             return $countId;
-        });
+            });
+        }finally{
+            try{$this->db->scalar('SELECT RELEASE_LOCK(?)',[$lockName]);}catch(Throwable $ignored){}
+        }
     }
 
     public function save(int $countId, array $values, int $userId): void
@@ -339,8 +350,8 @@ final class InventoryCountService
                    ON ci.inventory_count_id=?
                   AND ci.item_type=t.item_type
                   AND ci.item_id=t.item_id
-                 WHERE t.created_at > ?',
-                [$countId,$count['started_at']]
+                 WHERE t.id > ?',
+                [$countId,$count['inventory_transaction_cursor']]
             );
             if ($movement > 0) {
                 throw new RuntimeException('Inventory changed after this physical count started. Cancel it and start a fresh count so reconciliation cannot overwrite newer stock movements.');
