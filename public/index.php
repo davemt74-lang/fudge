@@ -125,6 +125,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newId=$db->insert('INSERT INTO users(name,email,password_hash,job_title,hourly_rate,status) VALUES(?,?,?,?,?,?)',[$name,$email,password_hash($password,PASSWORD_DEFAULT),trim($_POST['job_title']??'')?:null,(float)($_POST['hourly_rate']??0)?:null,$_POST['status']??'active']);
                 $roleId=(int)($_POST['role_id']??0); if($roleId)$db->exec('INSERT INTO user_roles(user_id,role_id) VALUES(?,?)',[$newId,$roleId]);
                 audit('team.member_created','user',$newId,null,['email'=>$email]);flash('success','Team member created.');redirect('?page=team');
+            case 'update_team_member':
+                require_permission('team.manage_members');
+                $memberId=(int)($_POST['member_id']??0);
+                $member=$db->one('SELECT * FROM users WHERE id=?',[$memberId]);
+                if(!$member) throw new RuntimeException('Team member not found.');
+                $isOwner=(int)$db->scalar('SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.slug="owner"',[$memberId])>0;
+                $name=trim($_POST['name']??'');
+                $email=strtolower(trim($_POST['email']??''));
+                if($name===''||!filter_var($email,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Name and a valid email are required.');
+                $status=$_POST['status']??'active';
+                if($isOwner && $status!=='active') throw new RuntimeException('Owner accounts cannot be deactivated.');
+                $db->transaction(function(Database $db) use($memberId,$name,$email,$status,$isOwner){
+                    $db->exec('UPDATE users SET name=?,email=?,job_title=?,hourly_rate=?,status=? WHERE id=?',[
+                        $name,$email,trim($_POST['job_title']??'')?:null,(float)($_POST['hourly_rate']??0)?:null,$status,$memberId
+                    ]);
+                    if(!$isOwner){
+                        $roleId=(int)($_POST['role_id']??0);
+                        if(!$roleId) throw new RuntimeException('Select a role.');
+                        $db->exec('DELETE FROM user_roles WHERE user_id=?',[$memberId]);
+                        $db->exec('INSERT INTO user_roles(user_id,role_id) VALUES(?,?)',[$memberId,$roleId]);
+                    }
+                    $password=(string)($_POST['new_password']??'');
+                    if($password!==''){
+                        if(strlen($password)<10) throw new RuntimeException('New password must be at least 10 characters.');
+                        $db->exec('UPDATE users SET password_hash=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),$memberId]);
+                    }
+                });
+                audit('team.member_updated','user',$memberId,$member,['email'=>$email,'status'=>$status]);
+                flash('success','Team member updated.');
+                redirect('?page=team&member='.$memberId);
+
+            case 'save_user_permission_overrides':
+                require_permission('team.manage_roles');
+                $memberId=(int)($_POST['member_id']??0);
+                $member=$db->one('SELECT id FROM users WHERE id=?',[$memberId]);
+                if(!$member) throw new RuntimeException('Team member not found.');
+                $isOwner=(int)$db->scalar('SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.slug="owner"',[$memberId])>0;
+                if($isOwner) throw new RuntimeException('Owner permissions are protected and cannot be overridden.');
+                $overrides=$_POST['overrides']??[];
+                $db->transaction(function(Database $db) use($memberId,$overrides){
+                    $db->exec('DELETE FROM user_permission_overrides WHERE user_id=?',[$memberId]);
+                    foreach($overrides as $permissionId=>$effect){
+                        if(!in_array($effect,['allow','deny'],true)) continue;
+                        $db->exec('INSERT INTO user_permission_overrides(user_id,permission_id,effect) VALUES(?,?,?)',[$memberId,(int)$permissionId,$effect]);
+                    }
+                });
+                audit('team.permission_overrides_updated','user',$memberId,null,['overrides'=>$overrides]);
+                flash('success','Individual permission overrides updated.');
+                redirect('?page=team&member='.$memberId);
+
             case 'save_role_permissions':
                 require_permission('team.manage_roles');
                 $roleId=(int)($_POST['role_id']??0);$role=$db->one('SELECT * FROM roles WHERE id=?',[$roleId]);if(!$role) throw new RuntimeException('Role not found.');if($role['slug']==='owner') throw new RuntimeException('Owner permissions are protected.');
@@ -217,7 +267,49 @@ switch ($page) {
     case 'team':
         require_permission('team.view');Ui::layoutStart('Team','team');Ui::pageHead('Team Members','Roles, feature permissions and production access.');
         $roles=$db->all('SELECT * FROM roles WHERE is_active=1 ORDER BY id');if(can('team.manage_members'))echo '<div class="card" style="margin-bottom:18px"><h2 class="section-title">Add Team Member</h2><form method="post" class="form-grid">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_team_member"><label>Name<input name="name" required></label><label>Email<input type="email" name="email" required></label><label>Job Title<input name="job_title"></label><label>Role<select name="role_id">';foreach($roles as $r)echo '<option value="'.$r['id'].'">'.h($r['name']).'</option>';echo '</select></label><label>Hourly Rate<input type="number" step="0.01" name="hourly_rate"></label><label>Status<select name="status"><option value="active">Active</option><option value="invited">Invited</option></select></label><label class="span-2">Temporary Password<input type="password" name="password" minlength="10" required></label><button class="btn primary">Create Team Member</button></form></div>';
-        $members=$db->all("SELECT u.*,GROUP_CONCAT(r.name ORDER BY r.name SEPARATOR ', ') roles FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id GROUP BY u.id ORDER BY u.name");echo '<div class="table-card"><div class="table-head"><h2>Members</h2></div><table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Login</th></tr></thead><tbody>';foreach($members as $m)echo '<tr><td><strong>'.h($m['name']).'</strong><div class="muted">'.h($m['email']).'</div></td><td>'.h($m['roles']).'</td><td>'.Ui::statusBadge($m['status']).'</td><td>'.h($m['last_login_at']).'</td></tr>';echo '</tbody></table></div>';
+        $members=$db->all("SELECT u.*,GROUP_CONCAT(r.name ORDER BY r.name SEPARATOR ', ') roles FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id GROUP BY u.id ORDER BY u.name");echo '<div class="table-card"><div class="table-head"><h2>Members</h2></div><table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead><tbody>';foreach($members as $m)echo '<tr><td><strong>'.h($m['name']).'</strong><div class="muted">'.h($m['email']).'</div></td><td>'.h($m['roles']).'</td><td>'.Ui::statusBadge($m['status']).'</td><td>'.h($m['last_login_at']).'</td><td><a class="btn small" href="?page=team&member='.$m['id'].'">Manage</a></td></tr>';echo '</tbody></table></div>';
+        $selectedMember=(int)($_GET['member']??0);
+        if($selectedMember){
+            $member=$db->one('SELECT * FROM users WHERE id=?',[$selectedMember]);
+            if($member){
+                $memberRole=$db->one('SELECT r.* FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? ORDER BY r.id LIMIT 1',[$selectedMember]);
+                $memberIsOwner=$memberRole&&$memberRole['slug']==='owner';
+                if(can('team.manage_members')){
+                    echo '<div class="card" style="margin-top:18px"><h2 class="section-title">Manage '.h($member['name']).'</h2><form method="post" class="form-grid">'.Ui::csrf().'<input type="hidden" name="form_action" value="update_team_member"><input type="hidden" name="member_id" value="'.$selectedMember.'"><label>Name<input name="name" value="'.h($member['name']).'" required></label><label>Email<input type="email" name="email" value="'.h($member['email']).'" required></label><label>Job Title<input name="job_title" value="'.h($member['job_title']).'"></label><label>Hourly Rate<input type="number" step="0.01" name="hourly_rate" value="'.h($member['hourly_rate']??'').'"></label>';
+                    if($memberIsOwner){
+                        echo '<label>Role<input value="Owner" disabled><small>Owner role is protected.</small></label><input type="hidden" name="status" value="active">';
+                    } else {
+                        echo '<label>Role<select name="role_id">';
+                        foreach($roles as $r) echo '<option value="'.$r['id'].'" '.(($memberRole['id']??0)==$r['id']?'selected':'').'>'.h($r['name']).'</option>';
+                        echo '</select></label><label>Status<select name="status">';
+                        foreach(['active'=>'Active','invited'=>'Invited','suspended'=>'Suspended','inactive'=>'Inactive','former'=>'Former'] as $value=>$label) echo '<option value="'.$value.'" '.($member['status']===$value?'selected':'').'>'.h($label).'</option>';
+                        echo '</select></label>';
+                    }
+                    echo '<label class="span-2">Reset Password<input type="password" name="new_password" minlength="10"><small>Leave blank to keep the current password.</small></label><div class="span-2"><button class="btn primary">Save Team Member</button></div></form></div>';
+                }
+
+                if(can('team.manage_roles')){
+                    echo '<div class="card" style="margin-top:18px"><h2 class="section-title">Individual Permission Overrides</h2>';
+                    if($memberIsOwner){
+                        echo '<div class="alert info">Owner permissions are protected and always allowed.</div>';
+                    } else {
+                        $existing=[];foreach($db->all('SELECT permission_id,effect FROM user_permission_overrides WHERE user_id=?',[$selectedMember]) as $ov)$existing[(int)$ov['permission_id']]=$ov['effect'];
+                        $allPerms=$db->all('SELECT * FROM permissions ORDER BY module,label');
+                        echo '<p class="muted">Role permissions remain the default. Use an individual override only for exceptions.</p><form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_user_permission_overrides"><input type="hidden" name="member_id" value="'.$selectedMember.'"><div class="permission-grid">';
+                        $module='';
+                        foreach($allPerms as $p){
+                            if($p['module']!==$module){if($module!=='')echo '</div>';echo '<div class="module">'.h($p['module']).'</div><div class="perms">';$module=$p['module'];}
+                            $effect=$existing[(int)$p['id']]??'';
+                            echo '<label style="display:flex;align-items:center;gap:6px">'.h($p['label']).' <select name="overrides['.$p['id'].']"><option value="" '.($effect===''?'selected':'').'>Role default</option><option value="allow" '.($effect==='allow'?'selected':'').'>Allow</option><option value="deny" '.($effect==='deny'?'selected':'').'>Deny</option></select></label>';
+                        }
+                        if($module!=='')echo '</div>';
+                        echo '</div><button class="btn primary" style="margin-top:14px">Save Individual Overrides</button></form>';
+                    }
+                    echo '</div>';
+                }
+            }
+        }
+
         if(can('team.manage_roles')){$selected=(int)($_GET['role']??($roles[1]['id']??0));$role=$db->one('SELECT * FROM roles WHERE id=?',[$selected]);$assigned=array_flip(array_column($db->all('SELECT permission_id FROM role_permissions WHERE role_id=?',[$selected]),'permission_id'));$perms=$db->all('SELECT * FROM permissions ORDER BY module,label');echo '<div class="card" style="margin-top:18px"><h2 class="section-title">Role Permissions</h2><div class="actions" style="margin-bottom:12px">';foreach($roles as $r)echo '<a class="btn small '.($r['id']==$selected?'primary':'').'" href="?page=team&role='.$r['id'].'">'.h($r['name']).'</a>';echo '</div>';if($role&&$role['slug']==='owner')echo '<div class="alert info">Owner permissions are protected and always include every feature.</div>';elseif($role){echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_role_permissions"><input type="hidden" name="role_id" value="'.$selected.'"><div class="permission-grid">';$current='';foreach($perms as $p){if($p['module']!==$current){if($current!=='')echo '</div>';echo '<div class="module">'.h($p['module']).'</div><div class="perms">';$current=$p['module'];}echo '<label><input type="checkbox" name="permissions[]" value="'.$p['id'].'" '.(isset($assigned[$p['id']])?'checked':'').'> '.h($p['label']).'</label>';}if($current!=='')echo '</div>';echo '</div><button class="btn primary" style="margin-top:14px">Save Role Permissions</button></form>';}}Ui::layoutEnd();break;
 
     case 'ai':
