@@ -150,7 +150,12 @@ final class CostingService
             }
 
             if ($componentType === 'recipe') {
-                $nestedVersion = $this->publishedVersionForRecipe($componentId);
+                $nestedVersion = !empty($item['component_recipe_version_id'])
+                    ? $this->db->one(
+                        'SELECT * FROM recipe_versions WHERE id=? AND recipe_id=?',
+                        [(int)$item['component_recipe_version_id'],$componentId]
+                    )
+                    : $this->publishedVersionForRecipe($componentId);
                 if (!$nestedVersion) {
                     $name = (string)($this->db->scalar('SELECT name FROM recipes WHERE id=?', [$componentId]) ?: 'Nested recipe');
                     $warnings[] = $name . ' has no published version.';
@@ -546,13 +551,24 @@ final class RecipeService
 
     public function publish(int $versionId): array
     {
-        $version = $this->requireDraft($versionId);
-        $componentCount = (int)$this->db->scalar('SELECT COUNT(*) FROM recipe_items WHERE recipe_version_id=?',[$versionId]);
-        if ($componentCount < 1) throw new RuntimeException('Add at least one component before publishing a recipe.');
-        $this->validateStructure($versionId);
-        $cost = $this->costing->recipeVersionCost($versionId);
+        return $this->db->transaction(function(Database $db) use ($versionId) {
+            $version = $db->one('SELECT * FROM recipe_versions WHERE id=? FOR UPDATE',[$versionId]);
+            if (!$version || $version['status'] !== 'draft') {
+                throw new RuntimeException('Only draft recipe versions can be published.');
+            }
 
-        return $this->db->transaction(function(Database $db) use ($versionId,$version,$cost) {
+            $componentCount = (int)$db->scalar(
+                'SELECT COUNT(*) FROM recipe_items WHERE recipe_version_id=?',
+                [$versionId]
+            );
+            if ($componentCount < 1) {
+                throw new RuntimeException('Add at least one component before publishing a recipe.');
+            }
+
+            $this->validateStructure($versionId);
+            $this->bindNestedRecipeVersions($versionId);
+            $cost = $this->costing->recipeVersionCost($versionId);
+
             $db->exec(
                 'UPDATE recipe_versions SET status="retired"
                  WHERE recipe_id=? AND status="published"',
@@ -564,6 +580,41 @@ final class RecipeService
             );
             return $cost;
         });
+    }
+
+    private function bindNestedRecipeVersions(int $versionId): void
+    {
+        $items=$this->db->all(
+            'SELECT id,component_id
+             FROM recipe_items
+             WHERE recipe_version_id=? AND component_type="recipe"
+             ORDER BY id',
+            [$versionId]
+        );
+        foreach($items as $item){
+            $nested=$this->db->one(
+                'SELECT id
+                 FROM recipe_versions
+                 WHERE recipe_id=? AND status="published"
+                 ORDER BY version_number DESC LIMIT 1',
+                [$item['component_id']]
+            );
+            if(!$nested){
+                $name=(string)($this->db->scalar(
+                    'SELECT name FROM recipes WHERE id=?',
+                    [$item['component_id']]
+                )?:'Nested recipe');
+                throw new RuntimeException(
+                    $name.' must have a published version before this recipe can be published.'
+                );
+            }
+            $this->db->exec(
+                'UPDATE recipe_items
+                 SET component_recipe_version_id=?
+                 WHERE id=? AND recipe_version_id=?',
+                [$nested['id'],$item['id'],$versionId]
+            );
+        }
     }
 
     private function validateStructure(int $versionId): void
