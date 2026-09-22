@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS production_batches (
   production_plan_id BIGINT UNSIGNED NULL,
   batch_code VARCHAR(100) NOT NULL UNIQUE,
   scheduled_for DATE NULL,
-  status ENUM('scheduled','prep','mixed','molded','chilling','glazed','topped','wrapped','boxed','completed','cancelled') NOT NULL DEFAULT 'scheduled',
+  status VARCHAR(60) NOT NULL DEFAULT 'scheduled',
   notes TEXT NULL,
   created_by BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -793,4 +793,25 @@ CREATE TABLE IF NOT EXISTS labor_sessions (
   CONSTRAINT fk_ls_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_ls_open(user_id,ended_at),
   INDEX idx_ls_batch(batch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS production_stages (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  stage_key VARCHAR(60) NOT NULL UNIQUE,
+  label VARCHAR(120) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS production_qc_templates (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  check_key VARCHAR(80) NOT NULL UNIQUE,
+  label VARCHAR(190) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
