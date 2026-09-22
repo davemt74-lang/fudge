@@ -26,12 +26,14 @@ require_once __DIR__ . '/Security.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Permissions.php';
 require_once __DIR__ . '/Services.php';
+require_once __DIR__ . '/UnitConversionService.php';
 require_once __DIR__ . '/PurchasingService.php';
 require_once __DIR__ . '/LlmService.php';
 
 $db = new Database($config['db']);
 $auth = new Auth($db);
 $permissions = new Permissions($db);
+$units = new UnitConversionService($db);
 $inventory = new InventoryService($db);
 $pricing = new SupplierPricingService($db);
 $purchasing = new PurchasingService($db);
