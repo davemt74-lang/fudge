@@ -206,6 +206,7 @@ final class DemandPlanningService
             'UPDATE production_plan_items SET planned_quantity=? WHERE production_plan_id=? AND flavor_id=?',
             [$quantity,$planId,$flavorId]
         );
+        $this->refreshMaterialRequirements($planId);
     }
 
     public function cancel(int $planId): void
@@ -507,6 +508,145 @@ final class DemandPlanningService
             ];
         }
         $requirements[$key]['required_quantity']+=(float)$quantity;
+    }
+
+    private function refreshMaterialRequirements(int $planId): void
+    {
+        $this->db->transaction(function(Database $db) use ($planId) {
+            $plan=$db->one('SELECT * FROM production_plans WHERE id=? FOR UPDATE',[$planId]);
+            if(!$plan || $plan['status']!=='draft') {
+                throw new RuntimeException('Only draft production plans can be recalculated.');
+            }
+
+            $db->exec(
+                'DELETE FROM production_plan_issues
+                 WHERE production_plan_id=? AND issue_code IN ("MATERIAL_SHORTAGE","RECIPE_EXPANSION_ERROR","PACKAGING_UNIT_ERROR","MISSING_PUBLISHED_RECIPE")',
+                [$planId]
+            );
+            $db->exec('DELETE FROM production_plan_requirements WHERE production_plan_id=?',[$planId]);
+
+            $requirements=[];
+            $issues=[];
+
+            $orderItems=$db->all(
+                'SELECT oi.product_id,oi.quantity,p.name product_name
+                 FROM production_plan_orders ppo
+                 JOIN order_items oi ON oi.order_id=ppo.order_id
+                 JOIN products p ON p.id=oi.product_id
+                 WHERE ppo.production_plan_id=?
+                 ORDER BY oi.id',
+                [$planId]
+            );
+
+            foreach($orderItems as $item){
+                $components=$db->all(
+                    'SELECT ppc.*,pi.name packaging_name,pi.inventory_unit
+                     FROM product_packaging_components ppc
+                     JOIN packaging_items pi ON pi.id=ppc.packaging_item_id
+                     WHERE ppc.product_id=? ORDER BY ppc.id',
+                    [$item['product_id']]
+                );
+                foreach($components as $component){
+                    try{
+                        $qty=$this->units->convert(
+                            (float)$component['quantity']*(int)$item['quantity'],
+                            (string)$component['unit'],
+                            (string)$component['inventory_unit']
+                        );
+                        $this->addRequirement(
+                            $requirements,'packaging',(int)$component['packaging_item_id'],
+                            $component['packaging_name'],$qty,$component['inventory_unit']
+                        );
+                    }catch(Throwable $e){
+                        $issues[]=[
+                            'severity'=>'blocking','issue_code'=>'PACKAGING_UNIT_ERROR',
+                            'message'=>$item['product_name'].' packaging: '.$e->getMessage(),
+                            'order_id'=>null,'order_item_id'=>null,'flavor_id'=>null,
+                        ];
+                    }
+                }
+            }
+
+            $planItems=$db->all(
+                'SELECT ppi.flavor_id,ppi.planned_quantity,f.name flavor_name
+                 FROM production_plan_items ppi
+                 JOIN flavors f ON f.id=ppi.flavor_id
+                 WHERE ppi.production_plan_id=? ORDER BY f.name',
+                [$planId]
+            );
+
+            foreach($planItems as $planItem){
+                $recipe=$db->one(
+                    'SELECT r.name,rv.id version_id
+                     FROM recipes r
+                     JOIN recipe_versions rv ON rv.recipe_id=r.id AND rv.status="published"
+                     WHERE r.recipe_type="finished" AND r.flavor_id=? AND r.is_active=1
+                     ORDER BY rv.version_number DESC LIMIT 1',
+                    [$planItem['flavor_id']]
+                );
+                if(!$recipe){
+                    $issues[]=[
+                        'severity'=>'blocking','issue_code'=>'MISSING_PUBLISHED_RECIPE',
+                        'message'=>$planItem['flavor_name'].' does not have an active published finished recipe.',
+                        'order_id'=>null,'order_item_id'=>null,'flavor_id'=>(int)$planItem['flavor_id'],
+                    ];
+                    continue;
+                }
+                try{
+                    $this->expandRecipeVersion(
+                        (int)$recipe['version_id'],(float)$planItem['planned_quantity'],
+                        $requirements,$issues,[]
+                    );
+                }catch(Throwable $e){
+                    $issues[]=[
+                        'severity'=>'blocking','issue_code'=>'RECIPE_EXPANSION_ERROR',
+                        'message'=>$recipe['name'].': '.$e->getMessage(),
+                        'order_id'=>null,'order_item_id'=>null,'flavor_id'=>(int)$planItem['flavor_id'],
+                    ];
+                }
+            }
+
+            foreach($requirements as $req){
+                $onHand=$this->onHand($req['item_type'],$req['item_id']);
+                $onOrder=$this->onOrder($req['item_type'],$req['item_id'],$req['unit']);
+                $shortage=max(0,(float)$req['required_quantity']-$onHand-$onOrder);
+                $db->exec(
+                    'INSERT INTO production_plan_requirements
+                     (production_plan_id,item_type,item_id,required_quantity,on_hand_at_build,on_order_at_build,shortage_at_build,unit)
+                     VALUES(?,?,?,?,?,?,?,?)',
+                    [$planId,$req['item_type'],$req['item_id'],$req['required_quantity'],$onHand,$onOrder,$shortage,$req['unit']]
+                );
+                if($shortage>0.000001){
+                    $issues[]=[
+                        'severity'=>'warning','issue_code'=>'MATERIAL_SHORTAGE',
+                        'message'=>$req['name'].' is short by '.number_format($shortage,3).' '.$req['unit'].'.',
+                        'order_id'=>null,'order_item_id'=>null,'flavor_id'=>null,
+                    ];
+                }
+            }
+
+            foreach($issues as $issue){
+                $db->exec(
+                    'INSERT INTO production_plan_issues
+                     (production_plan_id,severity,issue_code,message,order_id,order_item_id,flavor_id)
+                     VALUES(?,?,?,?,?,?,?)',
+                    [$planId,$issue['severity'],$issue['issue_code'],$issue['message'],$issue['order_id']??null,$issue['order_item_id']??null,$issue['flavor_id']??null]
+                );
+            }
+
+            $blocking=(int)$db->scalar(
+                'SELECT COUNT(*) FROM production_plan_issues WHERE production_plan_id=? AND severity="blocking"',
+                [$planId]
+            );
+            $warnings=(int)$db->scalar(
+                'SELECT COUNT(*) FROM production_plan_issues WHERE production_plan_id=? AND severity="warning"',
+                [$planId]
+            );
+            $db->exec(
+                'UPDATE production_plans SET blocking_issue_count=?,warning_count=? WHERE id=?',
+                [$blocking,$warnings,$planId]
+            );
+        });
     }
 
     private function onHand(string $type, int $itemId): float
