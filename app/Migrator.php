@@ -12,6 +12,7 @@ final class Migrator
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 version VARCHAR(64) NOT NULL UNIQUE,
                 name VARCHAR(190) NOT NULL,
+                checksum CHAR(64) NULL,
                 applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
@@ -46,7 +47,10 @@ final class Migrator
                 throw new RuntimeException('Duplicate migration version: ' . $migration['version']);
             }
 
-            $items[$migration['version']] = $migration + ['file' => $file];
+            $items[$migration['version']] = $migration + [
+                'file' => $file,
+                'checksum' => hash_file('sha256', $file),
+            ];
         }
 
         return $items;
@@ -54,6 +58,7 @@ final class Migrator
 
     public function pending(): array
     {
+        $this->assertNoDrift();
         $applied = array_flip($this->appliedVersions());
         return array_filter(
             $this->available(),
@@ -79,8 +84,8 @@ final class Migrator
                 ($migration['up'])($this->db->pdo());
 
                 $this->db->exec(
-                    'INSERT INTO schema_migrations (version,name,applied_at) VALUES (?,?,NOW())',
-                    [$migration['version'],$migration['name']]
+                    'INSERT INTO schema_migrations (version,name,checksum,applied_at) VALUES (?,?,?,NOW())',
+                    [$migration['version'],$migration['name'],$migration['checksum']]
                 );
 
                 $appliedNow[] = [
@@ -98,14 +103,28 @@ final class Migrator
         }
     }
 
+    public function assertNoDrift(): void
+    {
+        $this->ensureTable();
+        $available = $this->available();
+        $rows = $this->db->all('SELECT version,checksum FROM schema_migrations WHERE checksum IS NOT NULL');
+        foreach ($rows as $row) {
+            $version = (string)$row['version'];
+            if (!isset($available[$version])) continue;
+            if (!hash_equals((string)$row['checksum'], (string)$available[$version]['checksum'])) {
+                throw new RuntimeException('Migration file changed after it was applied: ' . $version);
+            }
+        }
+    }
+
     public function markAllAvailableApplied(): void
     {
         $this->ensureTable();
 
         foreach ($this->available() as $migration) {
             $this->db->exec(
-                'INSERT IGNORE INTO schema_migrations (version,name,applied_at) VALUES (?,?,NOW())',
-                [$migration['version'],$migration['name']]
+                'INSERT IGNORE INTO schema_migrations (version,name,checksum,applied_at) VALUES (?,?,?,NOW())',
+                [$migration['version'],$migration['name'],$migration['checksum']]
             );
         }
     }
