@@ -422,6 +422,16 @@ final class RecipeService
     {
         $name = trim($name);
         if ($name === '') throw new RuntimeException('Recipe name is required.');
+        $recipe = $this->db->one('SELECT * FROM recipes WHERE id=?',[$recipeId]);
+        if (!$recipe) throw new RuntimeException('Recipe not found.');
+        if ($active && $recipe['recipe_type'] === 'finished' && $recipe['flavor_id']) {
+            $duplicate = (int)$this->db->scalar(
+                'SELECT COUNT(*) FROM recipes
+                 WHERE recipe_type="finished" AND flavor_id=? AND is_active=1 AND id<>?',
+                [$recipe['flavor_id'],$recipeId]
+            );
+            if ($duplicate > 0) throw new RuntimeException('That flavor already has another active finished recipe.');
+        }
         $this->db->exec('UPDATE recipes SET name=?,is_active=? WHERE id=?',[$name,$active?1:0,$recipeId]);
     }
 
@@ -483,7 +493,7 @@ final class RecipeService
     {
         $version = $this->requireDraft($versionId);
         if (!in_array($type,['ingredient','packaging','recipe'],true)) throw new RuntimeException('Invalid recipe component type.');
-        if ($quantity < 0) throw new RuntimeException('Recipe component quantity cannot be negative.');
+        if ($quantity <= 0) throw new RuntimeException('Recipe component quantity must be greater than zero.');
         if ((int)$this->db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$unit]) < 1) {
             throw new RuntimeException('Select a valid component unit.');
         }
@@ -507,7 +517,7 @@ final class RecipeService
     public function updateComponent(int $versionId, int $itemId, float $quantity, string $unit): void
     {
         $this->requireDraft($versionId);
-        if ($quantity < 0) throw new RuntimeException('Recipe component quantity cannot be negative.');
+        if ($quantity <= 0) throw new RuntimeException('Recipe component quantity must be greater than zero.');
         if ((int)$this->db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$unit]) < 1) {
             throw new RuntimeException('Select a valid component unit.');
         }
@@ -531,6 +541,7 @@ final class RecipeService
         $version = $this->requireDraft($versionId);
         $componentCount = (int)$this->db->scalar('SELECT COUNT(*) FROM recipe_items WHERE recipe_version_id=?',[$versionId]);
         if ($componentCount < 1) throw new RuntimeException('Add at least one component before publishing a recipe.');
+        $this->validateStructure($versionId);
         $cost = $this->costing->recipeVersionCost($versionId);
 
         return $this->db->transaction(function(Database $db) use ($versionId,$version,$cost) {
@@ -545,6 +556,72 @@ final class RecipeService
             );
             return $cost;
         });
+    }
+
+    private function validateStructure(int $versionId): void
+    {
+        $version = $this->db->one('SELECT * FROM recipe_versions WHERE id=?',[$versionId]);
+        if (!$version) throw new RuntimeException('Recipe version not found.');
+
+        $items = $this->db->all('SELECT * FROM recipe_items WHERE recipe_version_id=?',[$versionId]);
+        foreach ($items as $item) {
+            $type = $item['component_type'];
+            $componentId = (int)$item['component_id'];
+            $fromUnit = (string)$item['unit'];
+
+            $from = $this->db->one('SELECT unit_type FROM units WHERE symbol=?',[$fromUnit]);
+            if (!$from) throw new RuntimeException('Unknown unit on recipe component: '.$fromUnit);
+
+            if ($type === 'ingredient') {
+                $target = $this->db->one(
+                    'SELECT i.name,u.unit_type
+                     FROM ingredients i JOIN units u ON u.symbol=i.inventory_unit
+                     WHERE i.id=?',
+                    [$componentId]
+                );
+                if (!$target) throw new RuntimeException('Recipe references a missing ingredient.');
+                if ($from['unit_type'] !== $target['unit_type']) {
+                    throw new RuntimeException($target['name'].' uses an incompatible recipe unit.');
+                }
+                continue;
+            }
+
+            if ($type === 'packaging') {
+                $target = $this->db->one(
+                    'SELECT p.name,u.unit_type
+                     FROM packaging_items p JOIN units u ON u.symbol=p.inventory_unit
+                     WHERE p.id=?',
+                    [$componentId]
+                );
+                if (!$target) throw new RuntimeException('Recipe references a missing packaging item.');
+                if ($from['unit_type'] !== $target['unit_type']) {
+                    throw new RuntimeException($target['name'].' uses an incompatible recipe unit.');
+                }
+                continue;
+            }
+
+            if ($type === 'recipe') {
+                $nested = $this->db->one(
+                    'SELECT r.name,rv.yield_unit,u.unit_type
+                     FROM recipes r
+                     JOIN recipe_versions rv ON rv.recipe_id=r.id AND rv.status="published"
+                     JOIN units u ON u.symbol=rv.yield_unit
+                     WHERE r.id=?
+                     ORDER BY rv.version_number DESC LIMIT 1',
+                    [$componentId]
+                );
+                if (!$nested) {
+                    $name=(string)($this->db->scalar('SELECT name FROM recipes WHERE id=?',[$componentId])?:'Nested recipe');
+                    throw new RuntimeException($name.' must have a published version before it can be used in a published recipe.');
+                }
+                if ($from['unit_type'] !== $nested['unit_type']) {
+                    throw new RuntimeException($nested['name'].' uses an incompatible nested-recipe unit.');
+                }
+                continue;
+            }
+
+            throw new RuntimeException('Unsupported recipe component type.');
+        }
     }
 
     private function requireDraft(int $versionId): array
