@@ -16,6 +16,7 @@ final class Ui
             'flavors'=>['Flavors','flavors.view'],
             'products'=>['Products','products.view'],
             'suppliers'=>['Suppliers','suppliers.view'],
+            'purchasing'=>['Purchasing','purchasing.view'],
             'customers'=>['Customers','customers.view'],
             'team'=>['Team','team.view'],
             'reports'=>['Reports','reports.view'],
