@@ -228,6 +228,11 @@ final class DemandPlanningService
             if(!$plan) throw new RuntimeException('Production plan not found.');
             if($plan['status']!=='locked') throw new RuntimeException('Only locked production plans can be launched.');
 
+            $currentFingerprint=$this->sourceFingerprint($plan['start_date'],$plan['end_date']);
+            if(!$plan['source_fingerprint'] || !hash_equals((string)$plan['source_fingerprint'],$currentFingerprint)){
+                throw new RuntimeException('Plan inputs changed after it was locked. Return it to draft or rebuild a new plan before launching production.');
+            }
+
             $existing=(int)$db->scalar('SELECT id FROM production_batches WHERE production_plan_id=? LIMIT 1',[$planId]);
             if($existing>0) throw new RuntimeException('This production plan already has a production batch.');
 
