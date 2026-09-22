@@ -185,6 +185,43 @@ function handle_phase4_page(string $page): never
                     flash('success','Clocked out: '.$result['minutes'].' minutes, $'.number_format((float)$result['labor_cost'],2).' labor cost.');
                     redirect('?page=production'.(!empty($_POST['batch_id'])?'&batch='.(int)$_POST['batch_id']:''));
 
+                case 'save_production_stage':
+                    require_permission('production.manage_settings');
+                    $id=$productionExecution->saveStage(
+                        (int)($_POST['id']??0)?:null,
+                        trim($_POST['stage_key']??''),
+                        trim($_POST['label']??''),
+                        (int)($_POST['sort_order']??0),
+                        (int)($_POST['is_active']??1)===1
+                    );
+                    audit('production.stage_saved','production_stage',$id,null,null);
+                    flash('success','Production stage saved. New batch setups will use the updated template.');
+                    redirect('?page=production&settings=1');
+
+                case 'save_qc_template':
+                    require_permission('production.manage_settings');
+                    $id=$productionExecution->saveQcTemplate(
+                        (int)($_POST['id']??0)?:null,
+                        trim($_POST['check_key']??''),
+                        trim($_POST['label']??''),
+                        (int)($_POST['sort_order']??0),
+                        (int)($_POST['is_active']??1)===1
+                    );
+                    audit('production.qc_template_saved','production_qc_template',$id,null,null);
+                    flash('success','QC template saved. New batch setups will use the updated template.');
+                    redirect('?page=production&settings=1');
+
+                case 'save_waste_reason':
+                    require_permission('production.manage_settings');
+                    $id=$productionExecution->saveWasteReason(
+                        (int)($_POST['id']??0)?:null,
+                        trim($_POST['name']??''),
+                        (int)($_POST['is_active']??1)===1
+                    );
+                    audit('production.waste_reason_saved','waste_reason',$id,null,null);
+                    flash('success','Waste reason saved.');
+                    redirect('?page=production&settings=1');
+
                 case 'complete_batch':
                     require_permission('production.complete_batch');
                     $batchId=(int)($_POST['batch_id']??0);
@@ -264,9 +301,19 @@ function handle_phase4_page(string $page): never
         );
 
         if($batch){
-            $stageKeys=['prep','mixed','molded','chilling','glazed','topped','wrapped','boxed'];
-            $stageIndex=array_search($batch['status'],$stageKeys,true);
-            $nextStage=($stageIndex!==false && $stageIndex<count($stageKeys)-1)?$stageKeys[$stageIndex+1]:null;
+            $steps=$db->all(
+                'SELECT * FROM production_batch_steps WHERE batch_id=? ORDER BY sort_order,id',
+                [$batchId]
+            );
+            $currentStep=null;
+            $nextStep=null;
+            foreach($steps as $idx=>$candidate){
+                if($candidate['step_key']===$batch['status']){
+                    $currentStep=$candidate;
+                    $nextStep=$steps[$idx+1]??null;
+                    break;
+                }
+            }
 
             echo '<div class="card" style="margin-bottom:18px"><div class="page-head"><div><div class="kicker">Production Batch</div><h1>'.h($batch['batch_code']).'</h1><div class="muted">'.($batch['plan_code']?'Plan '.h($batch['plan_code']).' · ':'').($batch['scheduled_for']?'Scheduled '.h($batch['scheduled_for']).' · ':'').'Created by '.h($batch['creator']).'</div></div><div>'.Ui::statusBadge($batch['status']).'</div></div></div>';
 
@@ -300,10 +347,6 @@ function handle_phase4_page(string $page): never
                 echo '</select></label><label>Planned Quantity<input type="number" min="1" name="planned_quantity" value="12" required></label><button class="btn primary">Save Flavor</button></form></div>';
             }
 
-            $steps=$db->all(
-                'SELECT * FROM production_batch_steps WHERE batch_id=? ORDER BY sort_order',
-                [$batchId]
-            );
             if($steps){
                 echo '<div class="card" style="margin-bottom:18px"><h2 class="section-title">Production Stages</h2><div class="list">';
                 foreach($steps as $step){
@@ -317,9 +360,9 @@ function handle_phase4_page(string $page): never
                 echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="initialize_batch"><input type="hidden" name="batch_id" value="'.$batchId.'"><button class="btn">Initialize / Rebuild Setup</button></form>';
                 if($items) echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="start_batch"><input type="hidden" name="batch_id" value="'.$batchId.'"><button class="btn primary" data-confirm="Start this production batch?">Start Batch</button></form>';
                 if(empty($batch['production_plan_id'])) echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="cancel_manual_batch"><input type="hidden" name="batch_id" value="'.$batchId.'"><button class="btn danger" data-confirm="Cancel this manual batch?">Cancel Batch</button></form>';
-            }elseif(in_array($batch['status'],$stageKeys,true)&&$batch['status']!=='boxed'&&can('production.update_batch')){
-                echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="advance_batch"><input type="hidden" name="batch_id" value="'.$batchId.'"><button class="btn primary">Complete '.h(ucfirst($batch['status'])).' → '.h(ucfirst((string)$nextStage)).'</button></form>';
-            }elseif($batch['status']==='boxed'&&can('production.complete_batch')){
+            }elseif($currentStep&&$nextStep&&can('production.update_batch')){
+                echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="advance_batch"><input type="hidden" name="batch_id" value="'.$batchId.'"><button class="btn primary">Complete '.h($currentStep['label']).' → '.h($nextStep['label']).'</button></form>';
+            }elseif($currentStep&&!$nextStep&&can('production.complete_batch')){
                 echo '<form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="complete_batch"><input type="hidden" name="batch_id" value="'.$batchId.'"><button class="btn primary" data-confirm="Complete this batch and create finished inventory?">Complete Batch</button></form>';
             }
             echo '</div>';
@@ -490,7 +533,12 @@ function handle_phase4_page(string $page): never
          FROM production_batches pb
          LEFT JOIN production_plans pp ON pp.id=pb.production_plan_id
          LEFT JOIN users u ON u.id=pb.created_by
-         ORDER BY FIELD(pb.status,"prep","mixed","molded","chilling","glazed","topped","wrapped","boxed","scheduled","completed","cancelled"),pb.id DESC
+         ORDER BY CASE
+                    WHEN pb.status='scheduled' THEN 1
+                    WHEN pb.status='completed' THEN 3
+                    WHEN pb.status='cancelled' THEN 4
+                    ELSE 0
+                  END,pb.id DESC
          LIMIT 100'
     );
     echo '<div class="table-card" style="margin-top:18px"><div class="table-head"><h2>Production Batches</h2></div><table><thead><tr><th>Batch</th><th>Source</th><th>Status</th><th>Scheduled</th><th>Planned</th><th>Good Output</th><th></th></tr></thead><tbody>';
