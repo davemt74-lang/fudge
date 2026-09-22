@@ -82,11 +82,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $migrationFiles = glob(dirname(__DIR__) . '/database/migrations/*.php') ?: [];
             sort($migrationFiles, SORT_STRING);
-            $stmt = $pdo->prepare('INSERT IGNORE INTO schema_migrations (version,name,applied_at) VALUES (?,?,NOW())');
+            $stmt = $pdo->prepare('INSERT IGNORE INTO schema_migrations (version,name,checksum,applied_at) VALUES (?,?,?,NOW())');
             foreach ($migrationFiles as $migrationFile) {
                 $migration = require $migrationFile;
                 if (is_array($migration) && !empty($migration['version']) && !empty($migration['name'])) {
-                    $stmt->execute([$migration['version'],$migration['name']]);
+                    $stmt->execute([$migration['version'],$migration['name'],hash_file('sha256',$migrationFile)]);
                 }
             }
 
