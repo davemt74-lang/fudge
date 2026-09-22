@@ -173,6 +173,18 @@ final class DemandPlanningService
                 throw new RuntimeException('Resolve all blocking issues and unallocated order units before locking this plan.');
             }
 
+            $duplicateOrders=(int)$db->scalar(
+                'SELECT COUNT(DISTINCT mine.order_id)
+                 FROM production_plan_orders mine
+                 JOIN production_plan_orders other ON other.order_id=mine.order_id AND other.production_plan_id<>mine.production_plan_id
+                 JOIN production_plans op ON op.id=other.production_plan_id
+                 WHERE mine.production_plan_id=? AND op.status IN ("locked","in_production")',
+                [$planId]
+            );
+            if($duplicateOrders>0){
+                throw new RuntimeException('One or more orders are already committed to another locked or active production plan.');
+            }
+
             $current=$this->sourceFingerprint($plan['start_date'],$plan['end_date']);
             if(!$plan['source_fingerprint'] || !hash_equals($plan['source_fingerprint'],$current)) {
                 throw new RuntimeException('Orders, flavor allocations, recipes, or packaging changed after this plan was built. Rebuild the plan before locking it.');
@@ -207,6 +219,67 @@ final class DemandPlanningService
             [$quantity,$planId,$flavorId]
         );
         $this->refreshMaterialRequirements($planId);
+    }
+
+    public function launchProduction(int $planId, int $userId): int
+    {
+        return $this->db->transaction(function(Database $db) use ($planId,$userId) {
+            $plan=$db->one('SELECT * FROM production_plans WHERE id=? FOR UPDATE',[$planId]);
+            if(!$plan) throw new RuntimeException('Production plan not found.');
+            if($plan['status']!=='locked') throw new RuntimeException('Only locked production plans can be launched.');
+
+            $existing=(int)$db->scalar('SELECT id FROM production_batches WHERE production_plan_id=? LIMIT 1',[$planId]);
+            if($existing>0) throw new RuntimeException('This production plan already has a production batch.');
+
+            $items=$db->all(
+                'SELECT ppi.*,f.name flavor_name
+                 FROM production_plan_items ppi
+                 JOIN flavors f ON f.id=ppi.flavor_id
+                 WHERE ppi.production_plan_id=? AND ppi.planned_quantity>0
+                 ORDER BY f.name',
+                [$planId]
+            );
+            if(!$items) throw new RuntimeException('This production plan has no planned flavor quantities.');
+
+            $batchId=$db->insert(
+                'INSERT INTO production_batches
+                 (production_plan_id,batch_code,scheduled_for,status,notes,created_by)
+                 VALUES (?,? ,?,"scheduled",?,?)',
+                [$planId,Security::reference('BATCH'),$plan['start_date'],'Generated from '.$plan['plan_code'],$userId]
+            );
+
+            foreach($items as $item){
+                $version=$db->one(
+                    'SELECT rv.id
+                     FROM recipes r
+                     JOIN recipe_versions rv ON rv.recipe_id=r.id AND rv.status="published"
+                     WHERE r.recipe_type="finished" AND r.flavor_id=? AND r.is_active=1
+                     ORDER BY rv.version_number DESC LIMIT 1',
+                    [$item['flavor_id']]
+                );
+                if(!$version) throw new RuntimeException($item['flavor_name'].' no longer has a published finished recipe.');
+                $db->exec(
+                    'INSERT INTO production_batch_items
+                     (batch_id,flavor_id,recipe_version_id,planned_quantity,waste_quantity)
+                     VALUES (?,?,?,?,0)',
+                    [$batchId,$item['flavor_id'],$version['id'],$item['planned_quantity']]
+                );
+            }
+
+            $db->exec(
+                'UPDATE orders o
+                 JOIN production_plan_orders ppo ON ppo.order_id=o.id
+                 SET o.status="production"
+                 WHERE ppo.production_plan_id=? AND o.status IN ("new","paid")',
+                [$planId]
+            );
+            $db->exec(
+                'UPDATE production_plans SET status="in_production" WHERE id=?',
+                [$planId]
+            );
+
+            return $batchId;
+        });
     }
 
     public function cancel(int $planId): void
@@ -262,10 +335,20 @@ final class DemandPlanningService
              ORDER BY product_id,packaging_item_id'
         );
 
+        $flavors=$this->db->all(
+            'SELECT id,is_active,updated_at FROM flavors ORDER BY id'
+        );
+        $inventoryCursor=(int)$this->db->scalar('SELECT COALESCE(MAX(id),0) FROM inventory_transactions');
+        $purchaseCursor=$this->db->one(
+            'SELECT COUNT(*) row_count,COALESCE(MAX(updated_at),"") max_updated
+             FROM purchase_orders WHERE status IN ("draft","submitted","partial")'
+        );
+
         return hash(
             'sha256',
             json_encode(
-                ['orders'=>$orders,'allocations'=>$allocations,'recipes'=>$recipes,'packaging'=>$packaging],
+                ['orders'=>$orders,'allocations'=>$allocations,'recipes'=>$recipes,'packaging'=>$packaging,
+                 'flavors'=>$flavors,'inventory_cursor'=>$inventoryCursor,'purchase_cursor'=>$purchaseCursor],
                 JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION
             )
         );
