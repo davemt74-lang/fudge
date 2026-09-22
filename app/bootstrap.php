@@ -39,13 +39,13 @@ $permissions = new Permissions($db);
 $units = new UnitConversionService($db);
 $inventory = new InventoryService($db);
 $pricing = new SupplierPricingService($db, $units);
-$purchasing = new PurchasingService($db, $units);
-$inventoryCounts = new InventoryCountService($db);
+$purchasing = new PurchasingService($db, $units, $inventory);
+$inventoryCounts = new InventoryCountService($db, $inventory);
 $reorders = new ReorderService($db, $units);
 $costing = new CostingService($db, $units);
 $recipeManager = new RecipeService($db, $costing);
 $demandPlanning = new DemandPlanningService($db, $units);
-$productionExecution = new ProductionExecutionService($db, $units);
+$productionExecution = new ProductionExecutionService($db, $units, $inventory);
 $llm = new LlmService($db, $config['app']['key']);
 
 function h(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
