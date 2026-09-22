@@ -22,6 +22,26 @@ return [
             $pdo->exec('ALTER TABLE supplier_price_history ADD COLUMN package_unit VARCHAR(30) NULL AFTER package_quantity');
         }
 
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='recipe_items' AND INDEX_NAME='uq_recipe_component'"
+        );
+        $stmt->execute();
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec(
+                "DELETE a FROM recipe_items a
+                 JOIN recipe_items b
+                   ON a.recipe_version_id=b.recipe_version_id
+                  AND a.component_type=b.component_type
+                  AND a.component_id=b.component_id
+                  AND a.id>b.id"
+            );
+            $pdo->exec(
+                'ALTER TABLE recipe_items
+                 ADD UNIQUE KEY uq_recipe_component(recipe_version_id,component_type,component_id)'
+            );
+        }
+
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS product_packaging_components (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
