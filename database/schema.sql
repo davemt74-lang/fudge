@@ -241,6 +241,7 @@ CREATE TABLE IF NOT EXISTS recipe_items (
   quantity DECIMAL(14,4) NOT NULL,
   unit VARCHAR(30) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_recipe_component(recipe_version_id,component_type,component_id),
   CONSTRAINT fk_ri_version FOREIGN KEY(recipe_version_id) REFERENCES recipe_versions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
