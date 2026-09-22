@@ -247,10 +247,14 @@ function handle_phase4_page(string $page): never
     }
 
     Ui::layoutStart('Production','production');
+    $headActions='<div class="actions">';
+    if(can('planning.view')) $headActions.='<a class="btn" href="?page=planning">Production Planning</a>';
+    if(can('production.manage_settings')) $headActions.='<a class="btn" href="?page=production&settings=1">Production Settings</a>';
+    $headActions.='</div>';
     Ui::pageHead(
         'Production Execution',
         'Run batches from scheduled production through materials, QC, packing and finished inventory.',
-        can('planning.view')?'<a class="btn" href="?page=planning">Production Planning</a>':''
+        $headActions
     );
 
     $openSession=$db->one(
@@ -286,6 +290,32 @@ function handle_phase4_page(string $page): never
 
     if(can('production.create_batch')){
         echo '<div class="card" style="margin-bottom:18px"><h2 class="section-title">Create Manual Batch</h2><form method="post" class="form-grid">'.Ui::csrf().'<input type="hidden" name="form_action" value="create_manual_batch"><label>Scheduled Date<input type="date" name="scheduled_for" value="'.h(date('Y-m-d')).'"></label><label>Notes<input name="notes" placeholder="Stock build, test run, event prep..."></label><button class="btn primary">Create Batch</button></form></div>';
+    }
+
+    if(can('production.manage_settings')&&!empty($_GET['settings'])){
+        $stageTemplates=$db->all('SELECT * FROM production_stages ORDER BY sort_order,id');
+        $qcTemplates=$db->all('SELECT * FROM production_qc_templates ORDER BY sort_order,id');
+        $wasteReasonsAll=$db->all('SELECT * FROM waste_reasons ORDER BY name');
+
+        echo '<div class="card" style="margin-bottom:18px"><div class="page-head"><div><h1>Production Settings</h1><div class="muted">These templates apply when a new batch is initialized. Existing initialized batches retain their frozen steps and QC checks.</div></div><a class="btn" href="?page=production">Close Settings</a></div>';
+
+        echo '<h2 class="section-title">Production Stages</h2><div class="table-card" style="box-shadow:none;margin-bottom:18px"><table><thead><tr><th>Key</th><th>Label</th><th>Order</th><th>Active</th><th></th></tr></thead><tbody>';
+        foreach($stageTemplates as $row){
+            echo '<tr><form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_production_stage"><input type="hidden" name="id" value="'.$row['id'].'"><input type="hidden" name="stage_key" value="'.h($row['stage_key']).'"><td><span class="code">'.h($row['stage_key']).'</span></td><td><input name="label" value="'.h($row['label']).'" required></td><td><input type="number" min="0" name="sort_order" value="'.(int)$row['sort_order'].'" style="width:80px"></td><td><select name="is_active"><option value="1" '.($row['is_active']?'selected':'').'>Active</option><option value="0" '.(!$row['is_active']?'selected':'').'>Inactive</option></select></td><td><button class="btn small">Save</button></td></form></tr>';
+        }
+        echo '</tbody></table></div><form method="post" class="form-grid" style="margin-bottom:22px">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_production_stage"><label>New Stage Key<input name="stage_key" placeholder="cooling_check" required><small>Lowercase letters, numbers and underscores.</small></label><label>Label<input name="label" placeholder="Cooling Check" required></label><label>Order<input type="number" min="0" name="sort_order" value="90"></label><input type="hidden" name="is_active" value="1"><div><button class="btn">Add Stage</button></div></form>';
+
+        echo '<h2 class="section-title">QC Templates</h2><div class="table-card" style="box-shadow:none;margin-bottom:18px"><table><thead><tr><th>Key</th><th>Label</th><th>Order</th><th>Active</th><th></th></tr></thead><tbody>';
+        foreach($qcTemplates as $row){
+            echo '<tr><form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_qc_template"><input type="hidden" name="id" value="'.$row['id'].'"><input type="hidden" name="check_key" value="'.h($row['check_key']).'"><td><span class="code">'.h($row['check_key']).'</span></td><td><input name="label" value="'.h($row['label']).'" required></td><td><input type="number" min="0" name="sort_order" value="'.(int)$row['sort_order'].'" style="width:80px"></td><td><select name="is_active"><option value="1" '.($row['is_active']?'selected':'').'>Active</option><option value="0" '.(!$row['is_active']?'selected':'').'>Inactive</option></select></td><td><button class="btn small">Save</button></td></form></tr>';
+        }
+        echo '</tbody></table></div><form method="post" class="form-grid" style="margin-bottom:22px">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_qc_template"><label>New QC Key<input name="check_key" placeholder="seal_check" required></label><label>Label<input name="label" placeholder="Seal quality verified" required></label><label>Order<input type="number" min="0" name="sort_order" value="80"></label><input type="hidden" name="is_active" value="1"><div><button class="btn">Add QC Check</button></div></form>';
+
+        echo '<h2 class="section-title">Waste Reasons</h2><div class="table-card" style="box-shadow:none;margin-bottom:18px"><table><thead><tr><th>Reason</th><th>Active</th><th></th></tr></thead><tbody>';
+        foreach($wasteReasonsAll as $row){
+            echo '<tr><form method="post">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_waste_reason"><input type="hidden" name="id" value="'.$row['id'].'"><td><input name="name" value="'.h($row['name']).'" required></td><td><select name="is_active"><option value="1" '.($row['is_active']?'selected':'').'>Active</option><option value="0" '.(!$row['is_active']?'selected':'').'>Inactive</option></select></td><td><button class="btn small">Save</button></td></form></tr>';
+        }
+        echo '</tbody></table></div><form method="post" class="form-grid">'.Ui::csrf().'<input type="hidden" name="form_action" value="save_waste_reason"><label>New Waste Reason<input name="name" required></label><input type="hidden" name="is_active" value="1"><div><button class="btn">Add Waste Reason</button></div></form></div>';
     }
 
     $batchId=(int)($_GET['batch']??0);
@@ -408,7 +438,7 @@ function handle_phase4_page(string $page): never
             foreach($qc as $check){
                 echo '<tr><td>'.h($check['flavor']?:'Batch').'</td><td><strong>'.h($check['label']).'</strong></td><td>'.Ui::statusBadge($check['result']).'</td><td>'.h($check['notes']).'</td><td>';
                 if(can('production.record_qc')&&!in_array($batch['status'],['scheduled','completed','cancelled'],true)){
-                    echo '<form method="post" class="actions">'.Ui::csrf().'<input type="hidden" name="form_action" value="record_qc"><input type="hidden" name="batch_id" value="'.$batchId.'"><input type="hidden" name="check_id" value="'.$check['id'].'"><select name="result"><option value="pass">Pass</option><option value="fail" '.($check['result']==='fail'?'selected':'').'>Fail</option><option value="na" '.($check['result']==='na'?'selected':'').'>N/A</option></select><input name="notes" value="'.h($check['notes']).'" placeholder="Optional notes"><button class="btn small">Save</button></form>';
+                    echo '<form method="post" class="actions">'.Ui::csrf().'<input type="hidden" name="form_action" value="record_qc"><input type="hidden" name="batch_id" value="'.$batchId.'"><input type="hidden" name="check_id" value="'.$check['id'].'"><select name="result" required><option value="" disabled '.($check['result']==='pending'?'selected':'').'>Choose result</option><option value="pass" '.($check['result']==='pass'?'selected':'').'>Pass</option><option value="fail" '.($check['result']==='fail'?'selected':'').'>Fail</option><option value="na" '.($check['result']==='na'?'selected':'').'>N/A</option></select><input name="notes" value="'.h($check['notes']).'" placeholder="Optional notes"><button class="btn small">Save</button></form>';
                 }
                 echo '</td></tr>';
             }
