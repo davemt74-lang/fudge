@@ -1,7 +1,11 @@
 <?php
 final class PurchasingService
 {
-    public function __construct(private Database $db, private UnitConversionService $units) {}
+    public function __construct(
+        private Database $db,
+        private UnitConversionService $units,
+        private InventoryService $inventory
+    ) {}
 
     public function createPurchaseOrder(int $supplierId, ?string $expectedAt, ?string $notes, int $userId): int
     {
@@ -92,7 +96,21 @@ final class PurchasingService
 
     public function receive(int $purchaseOrderId, array $receipts, ?string $notes, int $userId): int
     {
-        return $this->db->transaction(function(Database $db) use ($purchaseOrderId,$receipts,$notes,$userId) {
+        $refs=[];
+        foreach($receipts as $purchaseOrderItemId=>$receipt){
+            if((float)($receipt['packages']??0)<=0) continue;
+            $row=$this->db->one(
+                'SELECT item_type,item_id
+                 FROM purchase_order_items
+                 WHERE id=? AND purchase_order_id=?',
+                [(int)$purchaseOrderItemId,$purchaseOrderId]
+            );
+            if($row) $refs[]=['item_type'=>$row['item_type'],'item_id'=>(int)$row['item_id']];
+        }
+        if(!$refs) throw new RuntimeException('Enter at least one quantity to receive.');
+
+        return $this->inventory->withItemLocks($refs,function() use ($purchaseOrderId,$receipts,$notes,$userId) {
+            return $this->db->transaction(function(Database $db) use ($purchaseOrderId,$receipts,$notes,$userId) {
             $po = $db->one('SELECT * FROM purchase_orders WHERE id=? FOR UPDATE', [$purchaseOrderId]);
             if (!$po || !in_array($po['status'], ['submitted','partial'], true)) {
                 throw new RuntimeException('Only submitted or partially received purchase orders can be received.');
@@ -198,6 +216,7 @@ final class PurchasingService
             );
 
             return $sessionId;
+            });
         });
     }
 
@@ -213,7 +232,10 @@ final class PurchasingService
 
 final class InventoryCountService
 {
-    public function __construct(private Database $db) {}
+    public function __construct(
+        private Database $db,
+        private InventoryService $inventory
+    ) {}
 
     public function start(string $scope, ?string $notes, int $userId): int
     {
@@ -290,7 +312,17 @@ final class InventoryCountService
 
     public function complete(int $countId, int $userId): array
     {
-        return $this->db->transaction(function(Database $db) use ($countId,$userId) {
+        $refs=$this->db->all(
+            'SELECT item_type,item_id
+             FROM inventory_count_items
+             WHERE inventory_count_id=?
+             ORDER BY item_type,item_id',
+            [$countId]
+        );
+        if(!$refs) throw new RuntimeException('This inventory count has no items.');
+
+        return $this->inventory->withItemLocks($refs,function() use ($countId,$userId) {
+            return $this->db->transaction(function(Database $db) use ($countId,$userId) {
             $count = $db->one('SELECT * FROM inventory_counts WHERE id=? FOR UPDATE', [$countId]);
             if (!$count || $count['status'] !== 'open') throw new RuntimeException('Only open counts can be completed.');
 
@@ -346,6 +378,7 @@ final class InventoryCountService
             );
 
             return ['adjustments'=>$adjustments,'items'=>count($items)];
+            });
         });
     }
 
