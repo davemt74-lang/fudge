@@ -148,6 +148,11 @@ return [
 
         $ownerKeys = array_column($permissions, 0);
         $grant($pdo, 'owner', $ownerKeys);
+
+        // Repair the original foundation seed: Admin is intended to be full-access.
+        $pdo->exec("INSERT IGNORE INTO role_permissions (role_id,permission_id)
+                    SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.slug='admin'");
+
         $grant($pdo, 'admin', $ownerKeys);
         $grant($pdo, 'manager', $ownerKeys);
         $grant($pdo, 'inventory-purchasing', $ownerKeys);
