@@ -2,29 +2,29 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "[1/10] PHP syntax"
+echo "[1/12] PHP syntax"
 find "$ROOT" -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
 echo "  PASS"
 
-echo "[2/10] Encryption round trip"
+echo "[2/12] Encryption round trip"
 php -r 'require $argv[1]; $k=bin2hex(random_bytes(32)); $s="sk-test-secret-1234"; $e=Security::encrypt($s,$k); if(Security::decrypt($e,$k)!==$s){exit(1);} if(str_contains($e,$s)){exit(2);} echo "  PASS\n";' "$ROOT/app/Security.php"
 
-echo "[3/10] Unit conversion contracts"
+echo "[3/12] Unit conversion contracts"
 php -r 'require $argv[1]; $a=UnitConversionService::convertByFactors(4.5,"weight",16,"weight",1,"lb","oz"); if(abs($a-72)>0.000001) exit(1); $b=UnitConversionService::convertByFactors(1000,"weight",0.035274,"weight",1,"g","oz"); if(abs($b-35.274)>0.000001) exit(2); $c=UnitConversionService::convertByFactors(2,"volume",8,"volume",1,"cup","fl oz"); if(abs($c-16)>0.000001) exit(3); echo "  PASS\\n";' "$ROOT/app/UnitConversionService.php"
 
-echo "[4/10] Schema contracts"
-for table in users roles permissions ingredients packaging_items suppliers supplier_items supplier_price_history inventory_transactions recipes recipe_versions recipe_items flavors products customers orders production_batches llm_providers llm_credentials audit_log schema_migrations platform_meta purchase_orders purchase_order_items receiving_sessions receiving_items inventory_counts inventory_count_items; do
+echo "[4/12] Schema contracts"
+for table in users roles permissions ingredients packaging_items suppliers supplier_items supplier_price_history inventory_transactions recipes recipe_versions recipe_items flavors products customers orders production_batches llm_providers llm_credentials audit_log schema_migrations platform_meta purchase_orders purchase_order_items receiving_sessions receiving_items inventory_counts inventory_count_items product_packaging_components recipe_cost_snapshots product_cost_snapshots; do
   grep -q "CREATE TABLE IF NOT EXISTS $table" "$ROOT/database/schema.sql" || { echo "Missing table: $table"; exit 1; }
 done
 echo "  PASS"
 
-echo "[5/10] Permission contracts"
-for perm in inventory.adjust suppliers.update_prices recipes.publish production.create_batch orders.create team.manage_roles ai.manage_api_keys settings.manage purchasing.view purchasing.manage purchasing.submit purchasing.receive purchasing.cancel lots.view lots.manage; do
+echo "[5/12] Permission contracts"
+for perm in inventory.adjust suppliers.update_prices recipes.publish production.create_batch orders.create team.manage_roles ai.manage_api_keys settings.manage purchasing.view purchasing.manage purchasing.submit purchasing.receive purchasing.cancel lots.view lots.manage costing.view costing.snapshot costing.view_margin; do
   grep -q "'$perm'" "$ROOT/database/seed.sql" || { echo "Missing permission: $perm"; exit 1; }
 done
 echo "  PASS"
 
-echo "[6/10] Migration manager contracts"
+echo "[6/12] Migration manager contracts"
 test -f "$ROOT/public/upgrade.php"
 test -f "$ROOT/app/Migrator.php"
 test -d "$ROOT/database/migrations"
@@ -35,7 +35,7 @@ migration_count="$(find "$ROOT/database/migrations" -maxdepth 1 -name '*.php' | 
 test "$migration_count" -ge 1
 echo "  PASS ($migration_count migrations)"
 
-echo "[7/10] Access-control contracts"
+echo "[7/12] Access-control contracts"
 grep -q 'status = "active"' "$ROOT/app/Auth.php"
 grep -q "user_permission_overrides" "$ROOT/app/Permissions.php"
 grep -q "save_user_permission_overrides" "$ROOT/public/index.php"
@@ -43,7 +43,7 @@ grep -q "Owner permissions are protected" "$ROOT/public/index.php"
 grep -q "session_regenerate_id" "$ROOT/app/Auth.php"
 echo "  PASS"
 
-echo "[8/10] Phase 2A contracts"
+echo "[8/12] Phase 2A contracts"
 test -f "$ROOT/app/PurchasingService.php"
 test -f "$ROOT/app/Phase2AController.php"
 test -f "$ROOT/database/migrations/20260921_003_purchasing_receiving_inventory_counts.php"
@@ -56,7 +56,7 @@ grep -q "Admin is intended to be full-access" "$ROOT/database/migrations/2026092
 grep -q "Physical inventory counts cannot be negative" "$ROOT/app/PurchasingService.php"
 echo "  PASS"
 
-echo "[9/10] Installer and migration integrity"
+echo "[9/12] Installer and migration integrity"
 grep -q "checksum" "$ROOT/app/Migrator.php"
 grep -q "hash_file('sha256'" "$ROOT/public/install.php"
 grep -q "configTempPath" "$ROOT/public/install.php"
@@ -64,7 +64,31 @@ grep -q "INSERT IGNORE INTO user_roles" "$ROOT/public/install.php"
 grep -q "Migration file changed after it was applied" "$ROOT/app/Migrator.php"
 echo "  PASS"
 
-echo "[10/10] Secret hygiene"
+echo "[10/12] Phase 2B costing contracts"
+test -f "$ROOT/app/CostingService.php"
+test -f "$ROOT/app/Phase2BController.php"
+test -f "$ROOT/database/migrations/20260921_004_recursive_costing.php"
+grep -q "Recipe cycle detected" "$ROOT/app/CostingService.php"
+grep -q "validateStructure" "$ROOT/app/CostingService.php"
+grep -q "Missing current cost" "$ROOT/app/CostingService.php"
+grep -q "supplier_price_before" "$ROOT/public/index.php"
+grep -q "Recent Cost Impacts" "$ROOT/app/Phase2BController.php"
+grep -q "product_packaging_components" "$ROOT/database/schema.sql"
+grep -q "old_unit_cost" "$ROOT/database/schema.sql"
+echo "  PASS"
+
+echo "[11/12] Starter BOM contracts"
+grep -q "Chocolate Fudge Base" "$ROOT/database/seed.sql"
+grep -q "PKG-WRAP" "$ROOT/database/seed.sql"
+grep -q "PKG-STICKER" "$ROOT/database/seed.sql"
+grep -q "PKG-BOX6" "$ROOT/database/seed.sql"
+grep -q "PKG-BOX12" "$ROOT/database/seed.sql"
+grep -q "classic-chocolate" "$ROOT/database/seed.sql"
+grep -q "cookies-cream" "$ROOT/database/seed.sql"
+grep -q "peanut-butter-cup" "$ROOT/database/seed.sql"
+echo "  PASS"
+
+echo "[12/12] Secret hygiene"
 python - "$ROOT" <<'PYSCAN'
 import re, sys
 from pathlib import Path
