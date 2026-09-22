@@ -339,7 +339,7 @@ final class DemandPlanningService
         $recipes=$this->db->all(
             "SELECT r.id recipe_id,r.flavor_id,rv.id version_id,rv.version_number,
                     rv.yield_quantity,rv.yield_unit,
-                    ri.component_type,ri.component_id,ri.quantity,ri.unit,ri.sort_order
+                    ri.component_type,ri.component_id,ri.component_recipe_version_id,ri.quantity,ri.unit,ri.sort_order
              FROM recipes r
              JOIN recipe_versions rv ON rv.recipe_id=r.id AND rv.status='published'
              LEFT JOIN recipe_items ri ON ri.recipe_version_id=rv.id
@@ -583,15 +583,23 @@ final class DemandPlanningService
             }
 
             if($type==='recipe'){
-                $nested=$this->db->one(
-                    'SELECT rv.id,rv.yield_unit,r.name
-                     FROM recipes r
-                     JOIN recipe_versions rv ON rv.recipe_id=r.id AND rv.status="published"
-                     WHERE r.id=? AND r.is_active=1
-                     ORDER BY rv.version_number DESC LIMIT 1',
-                    [$id]
-                );
-                if(!$nested) throw new RuntimeException('Nested recipe #'.$id.' has no active published version.');
+                $nested=!empty($component['component_recipe_version_id'])
+                    ? $this->db->one(
+                        'SELECT rv.id,rv.yield_unit,r.name
+                         FROM recipe_versions rv
+                         JOIN recipes r ON r.id=rv.recipe_id
+                         WHERE rv.id=? AND rv.recipe_id=?',
+                        [(int)$component['component_recipe_version_id'],$id]
+                    )
+                    : $this->db->one(
+                        'SELECT rv.id,rv.yield_unit,r.name
+                         FROM recipes r
+                         JOIN recipe_versions rv ON rv.recipe_id=r.id AND rv.status="published"
+                         WHERE r.id=? AND r.is_active=1
+                         ORDER BY rv.version_number DESC LIMIT 1',
+                        [$id]
+                    );
+                if(!$nested) throw new RuntimeException('Nested recipe #'.$id.' has no usable bound version.');
                 $nestedTarget=$this->units->convert($qty,$component['unit'],$nested['yield_unit']);
                 $this->expandRecipeVersion((int)$nested['id'],$nestedTarget,$requirements,$issues,$stack);
                 continue;
