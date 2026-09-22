@@ -44,6 +44,11 @@ if ($page === 'planning') {
     handle_phase3_page($page);
 }
 
+if ($page === 'production') {
+    require_once dirname(__DIR__) . '/app/Phase4Controller.php';
+    handle_phase4_page($page);
+}
+
 if (in_array($page, ['recipes','costing'], true)) {
     require_once dirname(__DIR__) . '/app/Phase2BController.php';
     handle_phase2b_page($page);
