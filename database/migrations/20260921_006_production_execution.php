@@ -96,6 +96,30 @@ return [
         }
 
         $pdo->exec("
+            CREATE TABLE IF NOT EXISTS production_stages (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                stage_key VARCHAR(60) NOT NULL UNIQUE,
+                label VARCHAR(120) NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS production_qc_templates (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                check_key VARCHAR(80) NOT NULL UNIQUE,
+                label VARCHAR(190) NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        $pdo->exec("
             CREATE TABLE IF NOT EXISTS production_batch_steps (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 batch_id BIGINT UNSIGNED NOT NULL,
@@ -257,6 +281,33 @@ return [
             );
         }
 
+        $stages=[
+            ['prep','Prep',10],['mixed','Mixed',20],['molded','Molded',30],['chilling','Chilling',40],
+            ['glazed','Glazed',50],['topped','Topped',60],['wrapped','Wrapped',70],['boxed','Boxed',80],
+        ];
+        $stmt=$pdo->prepare(
+            'INSERT INTO production_stages(stage_key,label,sort_order,is_active)
+             VALUES (?,?,?,1)
+             ON DUPLICATE KEY UPDATE label=VALUES(label),sort_order=VALUES(sort_order)'
+        );
+        foreach($stages as $stage) $stmt->execute($stage);
+
+        $checks=[
+            ['shape','Shape / mold release',10],
+            ['target_weight','Target finished weight',20],
+            ['glaze','Glaze coverage / appearance',30],
+            ['topping','Topping amount / finish',40],
+            ['wrapper','Individual wrapper sealed',50],
+            ['sticker','Back sticker applied',60],
+            ['count','Finished count verified',70],
+        ];
+        $stmt=$pdo->prepare(
+            'INSERT INTO production_qc_templates(check_key,label,sort_order,is_active)
+             VALUES (?,?,?,1)
+             ON DUPLICATE KEY UPDATE label=VALUES(label),sort_order=VALUES(sort_order)'
+        );
+        foreach($checks as $check) $stmt->execute($check);
+
         $reasons=['Production Defect','QC Failure','Damaged','Dropped','Over / Under Weight','Sample / Tasting'];
         $stmt=$pdo->prepare('INSERT IGNORE INTO waste_reasons(name,is_active) VALUES(?,1)');
         foreach($reasons as $reason) $stmt->execute([$reason]);
@@ -268,6 +319,7 @@ return [
             ['production.assign_team','Production','Assign team members to batches'],
             ['production.track_labor','Production','Clock labor against production batches'],
             ['production.complete_batch','Production','Complete batches and create finished inventory'],
+            ['production.manage_settings','Production','Manage production stages QC templates and waste reasons'],
         ];
         $stmt=$pdo->prepare('INSERT IGNORE INTO permissions(permission_key,module,label) VALUES(?,?,?)');
         foreach($permissions as $permission) $stmt->execute($permission);
