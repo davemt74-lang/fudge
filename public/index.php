@@ -39,6 +39,11 @@ if (in_array($page, ['purchasing','inventory-counts','lots'], true)) {
     handle_phase2a_page($page);
 }
 
+if ($page === 'planning') {
+    require_once dirname(__DIR__) . '/app/Phase3Controller.php';
+    handle_phase3_page($page);
+}
+
 if (in_array($page, ['recipes','costing'], true)) {
     require_once dirname(__DIR__) . '/app/Phase2BController.php';
     handle_phase2b_page($page);
