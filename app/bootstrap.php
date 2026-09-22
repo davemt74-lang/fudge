@@ -30,6 +30,7 @@ require_once __DIR__ . '/UnitConversionService.php';
 require_once __DIR__ . '/PurchasingService.php';
 require_once __DIR__ . '/CostingService.php';
 require_once __DIR__ . '/DemandPlanningService.php';
+require_once __DIR__ . '/ProductionExecutionService.php';
 require_once __DIR__ . '/LlmService.php';
 
 $db = new Database($config['db']);
@@ -44,6 +45,7 @@ $reorders = new ReorderService($db, $units);
 $costing = new CostingService($db, $units);
 $recipeManager = new RecipeService($db, $costing);
 $demandPlanning = new DemandPlanningService($db, $units);
+$productionExecution = new ProductionExecutionService($db, $units);
 $llm = new LlmService($db, $config['app']['key']);
 
 function h(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
