@@ -802,6 +802,80 @@ final class ProductionExecutionService
         });
     }
 
+    public function saveStage(?int $id, string $stageKey, string $label, int $sortOrder, bool $active): int
+    {
+        $stageKey=strtolower(trim($stageKey));
+        $label=trim($label);
+        if($label==='') throw new RuntimeException('Production stage label is required.');
+        if($sortOrder<0) throw new RuntimeException('Production stage order cannot be negative.');
+
+        if($id){
+            $existing=$this->db->one('SELECT id FROM production_stages WHERE id=?',[$id]);
+            if(!$existing) throw new RuntimeException('Production stage not found.');
+            $this->db->exec(
+                'UPDATE production_stages SET label=?,sort_order=?,is_active=? WHERE id=?',
+                [$label,$sortOrder,$active?1:0,$id]
+            );
+            return $id;
+        }
+
+        if(!preg_match('/^[a-z][a-z0-9_]{1,59}$/',$stageKey)){
+            throw new RuntimeException('Stage key must use lowercase letters, numbers and underscores.');
+        }
+        if(in_array($stageKey,['scheduled','completed','cancelled'],true)){
+            throw new RuntimeException('That stage key is reserved by the batch lifecycle.');
+        }
+        return $this->db->insert(
+            'INSERT INTO production_stages(stage_key,label,sort_order,is_active) VALUES (?,?,?,?)',
+            [$stageKey,$label,$sortOrder,$active?1:0]
+        );
+    }
+
+    public function saveQcTemplate(?int $id, string $checkKey, string $label, int $sortOrder, bool $active): int
+    {
+        $checkKey=strtolower(trim($checkKey));
+        $label=trim($label);
+        if($label==='') throw new RuntimeException('QC check label is required.');
+        if($sortOrder<0) throw new RuntimeException('QC check order cannot be negative.');
+
+        if($id){
+            $existing=$this->db->one('SELECT id FROM production_qc_templates WHERE id=?',[$id]);
+            if(!$existing) throw new RuntimeException('QC template not found.');
+            $this->db->exec(
+                'UPDATE production_qc_templates SET label=?,sort_order=?,is_active=? WHERE id=?',
+                [$label,$sortOrder,$active?1:0,$id]
+            );
+            return $id;
+        }
+
+        if(!preg_match('/^[a-z][a-z0-9_]{1,79}$/',$checkKey)){
+            throw new RuntimeException('QC key must use lowercase letters, numbers and underscores.');
+        }
+        return $this->db->insert(
+            'INSERT INTO production_qc_templates(check_key,label,sort_order,is_active) VALUES (?,?,?,?)',
+            [$checkKey,$label,$sortOrder,$active?1:0]
+        );
+    }
+
+    public function saveWasteReason(?int $id, string $name, bool $active): int
+    {
+        $name=trim($name);
+        if($name==='') throw new RuntimeException('Waste reason name is required.');
+        if($id){
+            $existing=$this->db->one('SELECT id FROM waste_reasons WHERE id=?',[$id]);
+            if(!$existing) throw new RuntimeException('Waste reason not found.');
+            $this->db->exec(
+                'UPDATE waste_reasons SET name=?,is_active=? WHERE id=?',
+                [$name,$active?1:0,$id]
+            );
+            return $id;
+        }
+        return $this->db->insert(
+            'INSERT INTO waste_reasons(name,is_active) VALUES (?,?)',
+            [$name,$active?1:0]
+        );
+    }
+
     private function clearSetup(int $batchId, Database $db): void
     {
         $db->exec('DELETE FROM production_qc_checks WHERE batch_id=?',[$batchId]);
