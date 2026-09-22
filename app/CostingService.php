@@ -394,6 +394,13 @@ final class RecipeService
         if ($name === '') throw new RuntimeException('Recipe name is required.');
         if (!in_array($type,['base','component','finished'],true)) throw new RuntimeException('Invalid recipe type.');
         if ($type === 'finished' && !$flavorId) throw new RuntimeException('Finished recipes require a flavor.');
+        if ($type === 'finished' && $flavorId) {
+            $exists = (int)$this->db->scalar(
+                'SELECT COUNT(*) FROM recipes WHERE recipe_type="finished" AND flavor_id=? AND is_active=1',
+                [$flavorId]
+            );
+            if ($exists > 0) throw new RuntimeException('That flavor already has an active finished recipe.');
+        }
 
         return $this->db->transaction(function(Database $db) use ($name,$type,$flavorId,$userId) {
             $recipeId = $db->insert(
@@ -407,6 +414,13 @@ final class RecipeService
             );
             return $recipeId;
         });
+    }
+
+    public function updateRecipe(int $recipeId, string $name, bool $active): void
+    {
+        $name = trim($name);
+        if ($name === '') throw new RuntimeException('Recipe name is required.');
+        $this->db->exec('UPDATE recipes SET name=?,is_active=? WHERE id=?',[$name,$active?1:0,$recipeId]);
     }
 
     public function createDraftVersion(int $recipeId, int $userId, bool $cloneCurrent = true): int
@@ -453,6 +467,9 @@ final class RecipeService
     public function saveVersionMeta(int $versionId, float $yieldQty, string $yieldUnit, ?string $notes): void
     {
         if ($yieldQty <= 0) throw new RuntimeException('Recipe yield must be greater than zero.');
+        if ((int)$this->db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$yieldUnit]) < 1) {
+            throw new RuntimeException('Select a valid yield unit.');
+        }
         $this->requireDraft($versionId);
         $this->db->exec(
             'UPDATE recipe_versions SET yield_quantity=?,yield_unit=?,notes=? WHERE id=?',
@@ -465,6 +482,15 @@ final class RecipeService
         $version = $this->requireDraft($versionId);
         if (!in_array($type,['ingredient','packaging','recipe'],true)) throw new RuntimeException('Invalid recipe component type.');
         if ($quantity < 0) throw new RuntimeException('Recipe component quantity cannot be negative.');
+        if ((int)$this->db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$unit]) < 1) {
+            throw new RuntimeException('Select a valid component unit.');
+        }
+        $exists = match ($type) {
+            'ingredient' => (int)$this->db->scalar('SELECT COUNT(*) FROM ingredients WHERE id=?',[$componentId]),
+            'packaging' => (int)$this->db->scalar('SELECT COUNT(*) FROM packaging_items WHERE id=?',[$componentId]),
+            'recipe' => (int)$this->db->scalar('SELECT COUNT(*) FROM recipes WHERE id=?',[$componentId]),
+        };
+        if ($exists < 1) throw new RuntimeException('Recipe component not found.');
         if ($type === 'recipe' && $componentId === (int)$version['recipe_id']) {
             throw new RuntimeException('A recipe cannot contain itself.');
         }
