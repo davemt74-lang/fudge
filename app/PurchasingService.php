@@ -8,7 +8,7 @@ final class PurchasingService
         $supplier = $this->db->one('SELECT id FROM suppliers WHERE id=? AND is_active=1', [$supplierId]);
         if (!$supplier) throw new RuntimeException('Select an active supplier.');
 
-        $number = 'PO-' . date('Ymd-His') . '-' . random_int(10, 99);
+        $number = Security::reference('PO');
         return $this->db->insert(
             'INSERT INTO purchase_orders (po_number,supplier_id,status,expected_at,notes,created_by)
              VALUES (?,?,"draft",?,?,?)',
@@ -224,7 +224,7 @@ final class InventoryCountService
             if ($openCount > 0) {
                 throw new RuntimeException('Complete or cancel the existing open inventory count before starting another.');
             }
-            $number = 'COUNT-' . date('Ymd-His') . '-' . random_int(10,99);
+            $number = Security::reference('COUNT');
             $countId = $db->insert(
                 'INSERT INTO inventory_counts (count_number,status,created_by,notes) VALUES (?,"open",?,?)',
                 [$number,$userId,$notes ?: null]
