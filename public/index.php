@@ -49,6 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id=(int)($_POST['id']??0);
                 $data=[trim($_POST['name']??''),trim($_POST['sku']??'')?:null,(int)($_POST['category_id']??0)?:null,trim($_POST['inventory_unit']??'oz'),(float)($_POST['reorder_point']??0),(float)($_POST['target_stock']??0),trim($_POST['storage_location']??'')?:null,(int)($_POST['is_active']??1)];
                 if ($data[0]==='') throw new RuntimeException('Ingredient name is required.');
+                if((int)$db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$data[3]])<1) throw new RuntimeException('Select a valid inventory unit.');
+                if($data[4]<0||$data[5]<0) throw new RuntimeException('Reorder point and target stock cannot be negative.');
                 if ($id) {$before=$db->one('SELECT * FROM ingredients WHERE id=?',[$id]);$db->exec('UPDATE ingredients SET name=?,sku=?,category_id=?,inventory_unit=?,reorder_point=?,target_stock=?,storage_location=?,is_active=? WHERE id=?',[...$data,$id]);audit('ingredient.updated','ingredient',$id,$before,$data);}
                 else {$id=$db->insert('INSERT INTO ingredients(name,sku,category_id,inventory_unit,reorder_point,target_stock,storage_location,is_active) VALUES(?,?,?,?,?,?,?,?)',$data);audit('ingredient.created','ingredient',$id,null,$data);}
                 flash('success','Ingredient saved.'); redirect('?page=ingredients');
@@ -57,6 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id=(int)($_POST['id']??0);
                 $data=[trim($_POST['name']??''),trim($_POST['sku']??'')?:null,trim($_POST['inventory_unit']??'each'),(float)($_POST['current_unit_cost']??0),(float)($_POST['reorder_point']??0),(float)($_POST['target_stock']??0),(int)($_POST['is_active']??1)];
                 if ($data[0]==='') throw new RuntimeException('Packaging name is required.');
+                if((int)$db->scalar('SELECT COUNT(*) FROM units WHERE symbol=?',[$data[2]])<1) throw new RuntimeException('Select a valid inventory unit.');
+                if($data[3]<0||$data[4]<0||$data[5]<0) throw new RuntimeException('Packaging cost and stock thresholds cannot be negative.');
                 if ($id) {$before=$db->one('SELECT * FROM packaging_items WHERE id=?',[$id]);$db->exec('UPDATE packaging_items SET name=?,sku=?,inventory_unit=?,current_unit_cost=?,reorder_point=?,target_stock=?,is_active=? WHERE id=?',[...$data,$id]);audit('packaging.updated','packaging',$id,$before,$data);}
                 else {$id=$db->insert('INSERT INTO packaging_items(name,sku,inventory_unit,current_unit_cost,reorder_point,target_stock,is_active) VALUES(?,?,?,?,?,?,?)',$data);audit('packaging.created','packaging',$id,null,$data);}
                 flash('success','Packaging item saved.'); redirect('?page=packaging');
