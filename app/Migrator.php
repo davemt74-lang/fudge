@@ -115,10 +115,20 @@ final class Migrator
     {
         $this->ensureTable();
         $available = $this->available();
-        $rows = $this->db->all('SELECT version,checksum FROM schema_migrations WHERE checksum IS NOT NULL');
+        $rows = $this->db->all('SELECT version,checksum FROM schema_migrations');
         foreach ($rows as $row) {
             $version = (string)$row['version'];
             if (!isset($available[$version])) continue;
+
+            if (empty($row['checksum'])) {
+                // Legacy development installs predate checksum tracking. Baseline once.
+                $this->db->exec(
+                    'UPDATE schema_migrations SET checksum=? WHERE version=? AND checksum IS NULL',
+                    [$available[$version]['checksum'],$version]
+                );
+                continue;
+            }
+
             if (!hash_equals((string)$row['checksum'], (string)$available[$version]['checksum'])) {
                 throw new RuntimeException('Migration file changed after it was applied: ' . $version);
             }
