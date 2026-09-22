@@ -32,7 +32,8 @@ final class DemandPlanningService
                 throw new RuntimeException('New quantities can only be assigned to an active flavor.');
             }
 
-            $capacity = max(1,(int)($item['box_capacity'] ?: 1));
+            $capacity = (int)$item['box_capacity'];
+            if($capacity < 1) throw new RuntimeException($item['product_name'].' does not have a valid production capacity.');
             $maximum = $capacity * max(1,(int)$item['quantity']);
             $db->all('SELECT id FROM order_item_flavors WHERE order_item_id=? FOR UPDATE',[$orderItemId]);
             $other = (int)$db->scalar(
@@ -378,7 +379,7 @@ final class DemandPlanningService
         $items=$this->db->all(
             "SELECT o.id order_id,o.order_number,o.status,o.fulfillment_at,
                     oi.id order_item_id,oi.product_id,oi.quantity order_quantity,
-                    p.name product_name,COALESCE(NULLIF(p.box_capacity,0),1) box_capacity
+                    p.name product_name,p.box_capacity
              FROM orders o
              JOIN order_items oi ON oi.order_id=o.id
              JOIN products p ON p.id=oi.product_id
@@ -404,7 +405,15 @@ final class DemandPlanningService
 
         foreach($items as $item){
             $orderIds[(int)$item['order_id']]=(int)$item['order_id'];
-            $capacity=max(1,(int)$item['box_capacity']);
+            $capacity=(int)$item['box_capacity'];
+            if($capacity<1){
+                $issues[]=[
+                    'severity'=>'blocking','issue_code'=>'PRODUCT_CAPACITY_MISSING',
+                    'message'=>$item['order_number'].' '.$item['product_name'].' has no valid production capacity.',
+                    'order_id'=>(int)$item['order_id'],'order_item_id'=>(int)$item['order_item_id'],'flavor_id'=>null,
+                ];
+                continue;
+            }
             $unitsRequired=$capacity*max(1,(int)$item['order_quantity']);
 
             $allocations=$this->db->all(
