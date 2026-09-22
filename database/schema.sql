@@ -238,11 +238,14 @@ CREATE TABLE IF NOT EXISTS recipe_items (
   recipe_version_id BIGINT UNSIGNED NOT NULL,
   component_type ENUM('ingredient','recipe','packaging') NOT NULL,
   component_id BIGINT UNSIGNED NOT NULL,
+  component_recipe_version_id BIGINT UNSIGNED NULL,
   quantity DECIMAL(14,4) NOT NULL,
   unit VARCHAR(30) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   UNIQUE KEY uq_recipe_component(recipe_version_id,component_type,component_id),
-  CONSTRAINT fk_ri_version FOREIGN KEY(recipe_version_id) REFERENCES recipe_versions(id) ON DELETE CASCADE
+  CONSTRAINT fk_ri_version FOREIGN KEY(recipe_version_id) REFERENCES recipe_versions(id) ON DELETE CASCADE,
+  CONSTRAINT fk_recipe_component_version FOREIGN KEY(component_recipe_version_id) REFERENCES recipe_versions(id) ON DELETE RESTRICT,
+  INDEX idx_recipe_component_version(component_recipe_version_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS products (
