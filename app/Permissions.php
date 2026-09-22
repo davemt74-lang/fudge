@@ -7,27 +7,57 @@ final class Permissions
     public function allForUser(int $userId): array
     {
         if (isset($this->cache[$userId])) return $this->cache[$userId];
-        $isOwner = (int)$this->db->scalar('SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.slug="owner" AND r.is_active=1', [$userId]) > 0;
+
+        $isOwner = (int)$this->db->scalar(
+            'SELECT COUNT(*)
+             FROM user_roles ur
+             JOIN roles r ON r.id=ur.role_id
+             WHERE ur.user_id=? AND r.slug="owner" AND r.is_active=1',
+            [$userId]
+        ) > 0;
+
         if ($isOwner) {
             $map = [];
-            foreach ($this->db->all('SELECT permission_key FROM permissions') as $p) $map[$p['permission_key']] = true;
+            foreach ($this->db->all('SELECT permission_key FROM permissions') as $p) {
+                $map[$p['permission_key']] = true;
+            }
             return $this->cache[$userId] = $map;
         }
-        $rows = $this->db->all(
-            'SELECT p.permission_key,
-                    MAX(CASE WHEN ump.effect = "deny" THEN 2 WHEN ump.effect = "allow" THEN 1 ELSE 0 END) individual_effect,
-                    MAX(CASE WHEN rp.permission_id IS NOT NULL THEN 1 ELSE 0 END) role_allow
-             FROM permissions p
-             LEFT JOIN role_permissions rp ON rp.permission_id = p.id
-             LEFT JOIN user_roles ur ON ur.role_id = rp.role_id AND ur.user_id = ?
-             LEFT JOIN user_permission_overrides ump ON ump.permission_id = p.id AND ump.user_id = ?
-             GROUP BY p.id, p.permission_key',
-            [$userId, $userId]
-        );
-        $map = [];
-        foreach ($rows as $r) {
-            $map[$r['permission_key']] = ((int)$r['individual_effect'] === 2) ? false : (((int)$r['individual_effect'] === 1) || ((int)$r['role_allow'] === 1));
+
+        $rolePermissionIds = array_flip(array_map(
+            'intval',
+            array_column(
+                $this->db->all(
+                    'SELECT DISTINCT rp.permission_id
+                     FROM user_roles ur
+                     JOIN roles r ON r.id=ur.role_id AND r.is_active=1
+                     JOIN role_permissions rp ON rp.role_id=ur.role_id
+                     WHERE ur.user_id=?',
+                    [$userId]
+                ),
+                'permission_id'
+            )
+        ));
+
+        $overrides = [];
+        foreach ($this->db->all(
+            'SELECT permission_id,effect FROM user_permission_overrides WHERE user_id=?',
+            [$userId]
+        ) as $row) {
+            $overrides[(int)$row['permission_id']] = $row['effect'];
         }
+
+        $map = [];
+        foreach ($this->db->all('SELECT id,permission_key FROM permissions') as $permission) {
+            $permissionId = (int)$permission['id'];
+            $allowed = isset($rolePermissionIds[$permissionId]);
+
+            if (($overrides[$permissionId] ?? null) === 'allow') $allowed = true;
+            if (($overrides[$permissionId] ?? null) === 'deny') $allowed = false;
+
+            $map[$permission['permission_key']] = $allowed;
+        }
+
         return $this->cache[$userId] = $map;
     }
 
