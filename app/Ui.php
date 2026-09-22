@@ -13,6 +13,7 @@ final class Ui
             'ingredients'=>['Ingredients','ingredients.view'],
             'packaging'=>['Packaging','packaging.view'],
             'recipes'=>['Recipes','recipes.view'],
+            'costing'=>['Costing','costing.view'],
             'flavors'=>['Flavors','flavors.view'],
             'products'=>['Products','products.view'],
             'suppliers'=>['Suppliers','suppliers.view'],

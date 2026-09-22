@@ -1,4 +1,4 @@
-# Release Manifest — 0.2.0
+# Release Manifest — 0.3.0
 
 ## Build state
 
@@ -90,3 +90,39 @@ The current V1 foundation PR should not be treated as the final installable V1 r
 
 ### V1 install behavior
 The fresh V1 installer receives the current Phase 2A schema directly and baselines all shipped migrations. Existing installed systems will receive Phase 2A through `upgrade.php`.
+
+
+## Phase 2B — Recursive Recipe Costing & Supplier Cost Intelligence
+
+### Added
+- Recursive recipe costing across ingredients, packaging and nested sub-recipes
+- Cycle detection
+- Controlled unit conversion across every cost boundary
+- Cost completeness / warning propagation
+- Missing prices never masquerade as complete margins
+- Versioned recipe editor
+- Clone-current-published → draft workflow
+- Edit recipe yield, notes, components, quantities and units
+- Structural validation before publish
+- Published nested-recipe requirement
+- Historical recipe versions retained when a new version publishes
+- Duplicate recipe component protection
+- Product-level packaging BOM
+- Average/minimum/maximum flavor cost basis in costing service
+- Live Single / 6-Pack / 12-Pack direct COGS
+- Live product contribution and margin when underlying costs are complete
+- Recipe and product cost snapshots
+- Before/after snapshots for supplier-price changes
+- Before/after snapshots for product-price changes
+- Before/after snapshots for product packaging BOM changes
+- Recent cost-impact reporting
+- Supplier price history now preserves old and new normalized unit cost
+- Starter Fudge Donut BOMs for all launch flavors
+- Starter 6-pack and 12-pack product packaging BOMs
+- Costing permissions and audit coverage
+
+### Cost truthfulness rule
+If a required ingredient or packaging cost is unavailable, the platform marks the recipe/product as **Needs Pricing**. Partial material cost may be displayed for diagnosis, but the result is not treated as a complete margin.
+
+### Release gate
+Phase 2B is considered code-review complete only after its costing-specific static contracts and exact-head PHP 8.1 / 8.3 CI pass.

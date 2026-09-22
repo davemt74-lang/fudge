@@ -28,6 +28,7 @@ require_once __DIR__ . '/Permissions.php';
 require_once __DIR__ . '/Services.php';
 require_once __DIR__ . '/UnitConversionService.php';
 require_once __DIR__ . '/PurchasingService.php';
+require_once __DIR__ . '/CostingService.php';
 require_once __DIR__ . '/LlmService.php';
 
 $db = new Database($config['db']);
@@ -39,6 +40,8 @@ $pricing = new SupplierPricingService($db, $units);
 $purchasing = new PurchasingService($db, $units);
 $inventoryCounts = new InventoryCountService($db);
 $reorders = new ReorderService($db, $units);
+$costing = new CostingService($db, $units);
+$recipeManager = new RecipeService($db, $costing);
 $llm = new LlmService($db, $config['app']['key']);
 
 function h(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }

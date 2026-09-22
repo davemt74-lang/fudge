@@ -302,3 +302,167 @@ SELECT s.id,'packaging',p.id,'STARTER-BOX12-125','125 twelve-pack boxes',125,'ea
 FROM suppliers s JOIN packaging_items p ON p.sku='PKG-BOX12'
 WHERE s.name='Packaging Supplier'
 AND NOT EXISTS (SELECT 1 FROM supplier_items x WHERE x.supplier_id=s.id AND x.supplier_sku='STARTER-BOX12-125');
+
+
+-- Phase 2B permissions and role defaults.
+INSERT IGNORE INTO permissions (permission_key,module,label) VALUES
+('costing.view','Costing','View recipe and product costs'),
+('costing.snapshot','Costing','Capture cost snapshots'),
+('costing.view_margin','Costing','View product margin');
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug IN ('owner','admin','manager')
+AND p.permission_key IN ('costing.view','costing.snapshot','costing.view_margin');
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug='bookkeeping'
+AND p.permission_key IN ('costing.view','costing.view_margin');
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r JOIN permissions p
+WHERE r.slug IN ('inventory-purchasing','production-lead')
+AND p.permission_key='costing.view';
+
+-- Product-level packaging BOM.
+INSERT IGNORE INTO product_packaging_components (product_id,packaging_item_id,quantity,unit)
+SELECT pr.id,p.id,1,'each' FROM products pr JOIN packaging_items p
+WHERE pr.sku='FD-6' AND p.sku='PKG-BOX6';
+
+INSERT IGNORE INTO product_packaging_components (product_id,packaging_item_id,quantity,unit)
+SELECT pr.id,p.id,1,'each' FROM products pr JOIN packaging_items p
+WHERE pr.sku='FD-12' AND p.sku='PKG-BOX12';
+
+-- Complete the Chocolate Fudge Base starter BOM.
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.1667,'fl oz',40
+FROM recipe_versions rv
+JOIN recipes r ON r.id=rv.recipe_id
+JOIN ingredients i ON i.sku='ING-VANILLA'
+WHERE r.name='Chocolate Fudge Base' AND rv.version_number=1
+AND NOT EXISTS (
+  SELECT 1 FROM recipe_items x
+  WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id
+);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.05,'oz',50
+FROM recipe_versions rv
+JOIN recipes r ON r.id=rv.recipe_id
+JOIN ingredients i ON i.sku='ING-SALT'
+WHERE r.name='Chocolate Fudge Base' AND rv.version_number=1
+AND NOT EXISTS (
+  SELECT 1 FROM recipe_items x
+  WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id
+);
+
+-- Every finished Fudge Donut consumes one base portion, one glaze portion,
+-- one clear wrapper, and one branded back sticker.
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'recipe',base.id,1,'each',10
+FROM recipe_versions rv
+JOIN recipes finished ON finished.id=rv.recipe_id AND finished.recipe_type='finished'
+JOIN recipes base ON base.name='Chocolate Fudge Base'
+WHERE rv.version_number=1
+AND NOT EXISTS (
+  SELECT 1 FROM recipe_items x
+  WHERE x.recipe_version_id=rv.id AND x.component_type='recipe' AND x.component_id=base.id
+);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'recipe',glaze.id,1,'each',20
+FROM recipe_versions rv
+JOIN recipes finished ON finished.id=rv.recipe_id AND finished.recipe_type='finished'
+JOIN recipes glaze ON glaze.name='Chocolate Glaze'
+WHERE rv.version_number=1
+AND NOT EXISTS (
+  SELECT 1 FROM recipe_items x
+  WHERE x.recipe_version_id=rv.id AND x.component_type='recipe' AND x.component_id=glaze.id
+);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'packaging',p.id,1,'each',90
+FROM recipe_versions rv
+JOIN recipes finished ON finished.id=rv.recipe_id AND finished.recipe_type='finished'
+JOIN packaging_items p ON p.sku='PKG-WRAP'
+WHERE rv.version_number=1
+AND NOT EXISTS (
+  SELECT 1 FROM recipe_items x
+  WHERE x.recipe_version_id=rv.id AND x.component_type='packaging' AND x.component_id=p.id
+);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'packaging',p.id,1,'each',100
+FROM recipe_versions rv
+JOIN recipes finished ON finished.id=rv.recipe_id AND finished.recipe_type='finished'
+JOIN packaging_items p ON p.sku='PKG-STICKER'
+WHERE rv.version_number=1
+AND NOT EXISTS (
+  SELECT 1 FROM recipe_items x
+  WHERE x.recipe_version_id=rv.id AND x.component_type='packaging' AND x.component_id=p.id
+);
+
+-- Flavor toppings.
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.10,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-CHOC-SS'
+WHERE f.slug='classic-chocolate' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.40,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-OREO'
+WHERE f.slug='cookies-cream' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.40,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-PBCUP'
+WHERE f.slug='peanut-butter-cup' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.25,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-CARAMEL'
+WHERE f.slug='salted-caramel' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.25,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-MARSH'
+WHERE f.slug='smores' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.20,'oz',40
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-GRAHAM'
+WHERE f.slug='smores' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.15,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-SPRINKLES'
+WHERE f.slug='birthday-cake' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.25,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-COOKIEBUTTER'
+WHERE f.slug='cookie-butter' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.20,'oz',40
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-BISCOFF'
+WHERE f.slug='cookie-butter' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO recipe_items (recipe_version_id,component_type,component_id,quantity,unit,sort_order)
+SELECT rv.id,'ingredient',i.id,0.05,'oz',30
+FROM recipe_versions rv JOIN recipes r ON r.id=rv.recipe_id JOIN flavors f ON f.id=r.flavor_id JOIN ingredients i ON i.sku='ING-CINNAMON'
+WHERE f.slug='cinnamon-crunch' AND rv.version_number=1
+AND NOT EXISTS (SELECT 1 FROM recipe_items x WHERE x.recipe_version_id=rv.id AND x.component_type='ingredient' AND x.component_id=i.id);
+
+INSERT INTO platform_meta (meta_key,meta_value) VALUES ('phase_2b','complete')
+ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value);

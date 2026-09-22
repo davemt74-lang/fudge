@@ -149,8 +149,11 @@ CREATE TABLE IF NOT EXISTS supplier_price_history (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   supplier_item_id BIGINT UNSIGNED NOT NULL,
   old_price DECIMAL(12,2) NULL,
+  old_package_quantity DECIMAL(14,4) NULL,
+  old_unit_cost DECIMAL(14,6) NULL,
   new_price DECIMAL(12,2) NOT NULL,
   package_quantity DECIMAL(14,4) NOT NULL,
+  package_unit VARCHAR(30) NULL,
   unit_cost DECIMAL(14,6) NOT NULL,
   source_reference VARCHAR(1000) NULL,
   notes VARCHAR(1000) NULL,
@@ -526,4 +529,53 @@ CREATE TABLE IF NOT EXISTS inventory_count_items (
   CONSTRAINT fk_ici_adjustment FOREIGN KEY(adjustment_transaction_id) REFERENCES inventory_transactions(id) ON DELETE SET NULL,
   UNIQUE KEY uq_count_item(inventory_count_id,item_type,item_id),
   INDEX idx_ici_item(item_type,item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS product_packaging_components (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id BIGINT UNSIGNED NOT NULL,
+  packaging_item_id BIGINT UNSIGNED NOT NULL,
+  quantity DECIMAL(14,4) NOT NULL DEFAULT 1,
+  unit VARCHAR(30) NOT NULL DEFAULT 'each',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_product_packaging(product_id,packaging_item_id),
+  CONSTRAINT fk_ppc_product FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ppc_packaging FOREIGN KEY(packaging_item_id) REFERENCES packaging_items(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS recipe_cost_snapshots (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  recipe_version_id BIGINT UNSIGNED NOT NULL,
+  material_cost DECIMAL(14,6) NOT NULL,
+  yield_quantity DECIMAL(14,4) NOT NULL,
+  unit_cost DECIMAL(14,6) NOT NULL,
+  is_complete TINYINT(1) NOT NULL DEFAULT 1,
+  warning_count INT NOT NULL DEFAULT 0,
+  trigger_type VARCHAR(80) NOT NULL DEFAULT 'manual',
+  trigger_reference VARCHAR(190) NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_rcs_recipe_version FOREIGN KEY(recipe_version_id) REFERENCES recipe_versions(id) ON DELETE CASCADE,
+  CONSTRAINT fk_rcs_user FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_rcs_recipe_version(recipe_version_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS product_cost_snapshots (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id BIGINT UNSIGNED NOT NULL,
+  direct_cogs DECIMAL(14,6) NOT NULL,
+  selling_price DECIMAL(12,2) NOT NULL,
+  gross_profit DECIMAL(14,6) NOT NULL,
+  margin_pct DECIMAL(9,4) NOT NULL,
+  is_complete TINYINT(1) NOT NULL DEFAULT 1,
+  warning_count INT NOT NULL DEFAULT 0,
+  flavor_cost_basis VARCHAR(40) NOT NULL DEFAULT 'average',
+  trigger_type VARCHAR(80) NOT NULL DEFAULT 'manual',
+  trigger_reference VARCHAR(190) NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_pcs_product FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pcs_user FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_pcs_product(product_id,created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

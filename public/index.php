@@ -39,6 +39,11 @@ if (in_array($page, ['purchasing','inventory-counts','lots'], true)) {
     handle_phase2a_page($page);
 }
 
+if (in_array($page, ['recipes','costing'], true)) {
+    require_once dirname(__DIR__) . '/app/Phase2BController.php';
+    handle_phase2b_page($page);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Security::validateCsrf();
     $postAction = $_POST['form_action'] ?? '';
@@ -99,14 +104,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 audit('supplier_item.created','supplier_item',$id,null,['price'=>$price]);flash('success','Supplier item linked.');redirect('?page=suppliers');
             case 'update_supplier_price':
                 require_permission('suppliers.update_prices');
-                $pricing->updatePrice((int)$_POST['supplier_item_id'],(float)$_POST['new_price'],(float)($_POST['package_quantity']??0)?:null,trim($_POST['source_reference']??'')?:null,trim($_POST['notes']??''),$uid);
-                audit('supplier.price_updated','supplier_item',(int)$_POST['supplier_item_id'],null,['new_price'=>(float)$_POST['new_price']]);flash('success','Supplier price updated and price history preserved.');redirect('?page=suppliers');
+                $supplierItemId=(int)$_POST['supplier_item_id'];
+                $impactRef=Security::reference('PRICE');
+                try{$costing->captureSnapshots($uid,'supplier_price_before',$impactRef);}catch(Throwable $ignored){}
+                $pricing->updatePrice($supplierItemId,(float)$_POST['new_price'],(float)($_POST['package_quantity']??0)?:null,trim($_POST['source_reference']??'')?:null,trim($_POST['notes']??''),$uid);
+                try{$costing->captureSnapshots($uid,'supplier_price_after',$impactRef);}catch(Throwable $ignored){}
+                audit('supplier.price_updated','supplier_item',$supplierItemId,null,['new_price'=>(float)$_POST['new_price'],'cost_impact_reference'=>$impactRef]);flash('success','Supplier price updated, history preserved, and cost impact snapshot captured.');redirect('?page=suppliers');
             case 'save_product':
                 require_permission('products.manage');
                 $id=(int)($_POST['id']??0);$data=[trim($_POST['name']??''),trim($_POST['sku']??''),$_POST['product_type']??'box',(int)($_POST['box_capacity']??0)?:null,(float)($_POST['price']??0),(int)($_POST['is_active']??1)];
-                if ($id) $db->exec('UPDATE products SET name=?,sku=?,product_type=?,box_capacity=?,price=?,is_active=? WHERE id=?',[...$data,$id]);
+                if($data[0]===''||$data[1]==='') throw new RuntimeException('Product name and SKU are required.');
+                if((float)$data[4]<0) throw new RuntimeException('Product price cannot be negative.');
+                $impactRef=Security::reference('PRODUCT');
+                if($id){try{$costing->captureSnapshots($uid,'product_price_before',$impactRef);}catch(Throwable $ignored){}$db->exec('UPDATE products SET name=?,sku=?,product_type=?,box_capacity=?,price=?,is_active=? WHERE id=?',[...$data,$id]);}
                 else $id=$db->insert('INSERT INTO products(name,sku,product_type,box_capacity,price,is_active) VALUES(?,?,?,?,?,?)',$data);
-                audit('product.saved','product',$id,null,$data);flash('success','Product saved.');redirect('?page=products');
+                try{$costing->captureSnapshots($uid,$id&&isset($_POST['id'])&&((int)$_POST['id'])>0?'product_price_after':'product_created',$impactRef);}catch(Throwable $ignored){}
+                audit('product.saved','product',$id,null,$data+['cost_impact_reference'=>$impactRef]);flash('success','Product saved.');redirect('?page=products');
             case 'save_flavor':
                 require_permission('flavors.manage');
                 $id=(int)($_POST['id']??0);$name=trim($_POST['name']??'');$slug=trim($_POST['slug']??'');$data=[$name,$slug,trim($_POST['description']??'')?:null,trim($_POST['image_url']??'')?:null,(float)($_POST['target_weight_oz']??0)?:null,(int)($_POST['seasonal']??0),(int)($_POST['is_active']??1)];
