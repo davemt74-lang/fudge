@@ -463,6 +463,9 @@ final class ProductionExecutionService
                 [$checkId]
             );
             if(!$check) throw new RuntimeException('QC check not found.');
+            if($check['batch_status']==='scheduled') {
+                throw new RuntimeException('Start the batch before recording production QC.');
+            }
             if(in_array($check['batch_status'],['completed','cancelled'],true)) {
                 throw new RuntimeException('QC cannot be changed on a closed batch.');
             }
@@ -487,6 +490,9 @@ final class ProductionExecutionService
                 [$batchItemId]
             );
             if(!$item) throw new RuntimeException('Batch item not found.');
+            if($item['batch_status']==='scheduled') {
+                throw new RuntimeException('Start the batch before recording finished output.');
+            }
             if(in_array($item['batch_status'],['completed','cancelled'],true)) {
                 throw new RuntimeException('Finished output cannot change on a closed batch.');
             }
@@ -518,6 +524,9 @@ final class ProductionExecutionService
                 [$batchItemId]
             );
             if(!$item) throw new RuntimeException('Batch item not found.');
+            if($item['batch_status']==='scheduled') {
+                throw new RuntimeException('Start the batch before recording production waste.');
+            }
             if(in_array($item['batch_status'],['completed','cancelled'],true)) {
                 throw new RuntimeException('Waste cannot be added to a closed batch.');
             }
