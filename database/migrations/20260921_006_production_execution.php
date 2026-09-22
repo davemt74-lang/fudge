@@ -28,6 +28,44 @@ return [
             return (int)$stmt->fetchColumn()>0;
         };
 
+        if(!$columnExists($pdo,'recipe_items','component_recipe_version_id')){
+            $pdo->exec(
+                'ALTER TABLE recipe_items
+                 ADD COLUMN component_recipe_version_id BIGINT UNSIGNED NULL AFTER component_id'
+            );
+        }
+        if(!$indexExists($pdo,'recipe_items','idx_recipe_component_version')){
+            $pdo->exec(
+                'ALTER TABLE recipe_items
+                 ADD INDEX idx_recipe_component_version(component_recipe_version_id)'
+            );
+        }
+        if(!$fkExists($pdo,'recipe_items','fk_recipe_component_version')){
+            $pdo->exec(
+                'ALTER TABLE recipe_items
+                 ADD CONSTRAINT fk_recipe_component_version
+                 FOREIGN KEY(component_recipe_version_id) REFERENCES recipe_versions(id) ON DELETE RESTRICT'
+            );
+        }
+
+        // Development data predates immutable nested-version binding. Baseline published/retired
+        // parent versions to the latest currently published child version. Future publishes bind exactly.
+        $pdo->exec(
+            "UPDATE recipe_items ri
+             JOIN recipe_versions parent_rv ON parent_rv.id=ri.recipe_version_id
+             SET ri.component_recipe_version_id=(
+                 SELECT child_rv.id
+                 FROM recipe_versions child_rv
+                 WHERE child_rv.recipe_id=ri.component_id
+                   AND child_rv.status='published'
+                 ORDER BY child_rv.version_number DESC
+                 LIMIT 1
+             )
+             WHERE ri.component_type='recipe'
+               AND parent_rv.status IN ('published','retired')
+               AND ri.component_recipe_version_id IS NULL"
+        );
+
         if(!$indexExists($pdo,'production_batch_items','uq_batch_flavor')){
             $pdo->exec(
                 "UPDATE production_batch_items a
