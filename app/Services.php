@@ -35,8 +35,8 @@ final class SupplierPricingService
             $unitCost = $this->units
                 ? $this->units->normalizedUnitCost($newPrice, $qty, (string)$item['package_unit'], $inventoryUnit)
                 : ($qty > 0 ? $newPrice / $qty : 0);
-            $db->insert('INSERT INTO supplier_price_history (supplier_item_id,old_price,new_price,package_quantity,unit_cost,source_reference,notes,effective_at,created_by) VALUES (?,?,?,?,?,?,?,NOW(),?)', [
-                $supplierItemId,$item['package_price'],$newPrice,$qty,$unitCost,$sourceRef,$notes,$userId
+            $db->insert('INSERT INTO supplier_price_history (supplier_item_id,old_price,old_package_quantity,old_unit_cost,new_price,package_quantity,package_unit,unit_cost,source_reference,notes,effective_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,NOW(),?)', [
+                $supplierItemId,$item['package_price'],$item['package_quantity'],$item['unit_cost'],$newPrice,$qty,$item['package_unit'],$unitCost,$sourceRef,$notes,$userId
             ]);
             $db->exec('UPDATE supplier_items SET package_price=?, package_quantity=?, unit_cost=?, last_price_update=NOW(), updated_at=NOW() WHERE id=?', [$newPrice,$qty,$unitCost,$supplierItemId]);
         });
