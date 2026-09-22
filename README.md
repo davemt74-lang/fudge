@@ -110,6 +110,18 @@ bash tests/run.sh
 
 The CI suite runs PHP lint, encryption round-trip, expected-schema checks, permission-contract checks, migration-manager contracts and secret-leak checks on PHP 8.1 and PHP 8.3. A live MySQL/MariaDB integration gate will be added during V1 release hardening.
 
+## Phase 2A — Purchasing & Receiving
+
+Built in v0.2.0:
+
+- Purchase orders and supplier-item line snapshots
+- Submit, partial receive, full receive and cancel lifecycle
+- Inventory receipt ledger postings
+- Ingredient lots and expiration dates
+- Physical counts with auditable reconciliation
+- Reorder-to-par suggestions with estimated cost
+- Purchasing and lot permissions
+
 ## Next build phases
 
 This package establishes the production foundation. The next development passes should deepen, rather than replace, the current data model:
@@ -117,7 +129,7 @@ This package establishes the production foundation. The next development passes 
 1. Full mix-and-match 6/12 box composer on order entry and customer storefront.
 2. Recipe COGS recursion through nested recipes and live supplier price changes.
 3. Production demand aggregation from orders and automatic ingredient requirements.
-4. Purchase orders, receiving, lots, FIFO and expiration workflows.
+4. FEFO/FIFO consumption from received lots during production.
 5. Finished-goods reservation/depletion and visual packing station.
 6. QC checklists, yield variance, waste approvals and labor clock-in/out.
 7. Flavor-level profitability, pack margin and price-impact simulation.
