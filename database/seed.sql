@@ -55,10 +55,20 @@ INSERT IGNORE INTO permissions (permission_key,module,label) VALUES
 ('ai.manage_api_keys','AI','Manage AI API keys'),
 ('ai.view_usage','AI','View AI usage'),
 ('audit.view','Audit','View audit log'),
-('settings.manage','Settings','Manage system settings');
+('settings.manage','Settings','Manage system settings'),
+('purchasing.view','Purchasing','View purchase orders'),
+('purchasing.manage','Purchasing','Create and edit purchase orders'),
+('purchasing.submit','Purchasing','Submit purchase orders'),
+('purchasing.receive','Purchasing','Receive purchase orders'),
+('purchasing.cancel','Purchasing','Cancel purchase orders'),
+('lots.view','Inventory','View ingredient lots and expiration'),
+('lots.manage','Inventory','Manage ingredient lots');
 
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.slug='owner';
+
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
+SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.slug='admin';
 
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
@@ -67,7 +77,7 @@ SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
 'recipes.view','recipes.edit','recipes.publish','recipes.view_cost','flavors.view','flavors.manage','products.view','products.manage',
 'production.view','production.create_batch','production.update_batch','production.close_batch',
 'orders.view','orders.create','orders.edit','customers.view','customers.manage','reports.view','reports.view_profit',
-'team.view','team.manage_members','ai.view','ai.use','ai.view_usage','audit.view'
+'team.view','team.manage_members','ai.view','ai.use','ai.view_usage','audit.view','purchasing.view','purchasing.manage','purchasing.submit','purchasing.receive','purchasing.cancel','lots.view','lots.manage'
 ) WHERE r.slug='manager';
 
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
@@ -89,7 +99,8 @@ SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
 'dashboard.view','ingredients.view','ingredients.manage','packaging.view','packaging.manage','inventory.view','inventory.adjust','inventory.receive','inventory.count','inventory.view_cost',
-'suppliers.view','suppliers.manage','suppliers.update_prices','suppliers.view_price_history','suppliers.bulk_update_prices'
+'suppliers.view','suppliers.manage','suppliers.update_prices','suppliers.view_price_history','suppliers.bulk_update_prices',
+'purchasing.view','purchasing.manage','purchasing.submit','purchasing.receive','purchasing.cancel','lots.view','lots.manage'
 ) WHERE r.slug='inventory-purchasing';
 
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
@@ -99,12 +110,12 @@ SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
 
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
-'dashboard.view','reports.view','reports.view_profit','orders.view','inventory.view_cost','suppliers.view','suppliers.view_price_history'
+'dashboard.view','reports.view','reports.view_profit','orders.view','inventory.view_cost','suppliers.view','suppliers.view_price_history','purchasing.view','lots.view'
 ) WHERE r.slug='bookkeeping';
 
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN (
-'dashboard.view','orders.view','production.view','inventory.view','recipes.view','flavors.view','products.view','suppliers.view','team.view'
+'dashboard.view','orders.view','production.view','inventory.view','recipes.view','flavors.view','products.view','suppliers.view','team.view','purchasing.view','lots.view'
 ) WHERE r.slug='viewer';
 
 INSERT IGNORE INTO ingredient_categories (name) VALUES
