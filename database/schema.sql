@@ -591,6 +591,8 @@ CREATE TABLE IF NOT EXISTS production_plans (
   unallocated_units INT NOT NULL DEFAULT 0,
   blocking_issue_count INT NOT NULL DEFAULT 0,
   warning_count INT NOT NULL DEFAULT 0,
+  source_fingerprint CHAR(64) NULL,
+  built_at DATETIME NULL,
   notes TEXT NULL,
   created_by BIGINT UNSIGNED NULL,
   locked_by BIGINT UNSIGNED NULL,
