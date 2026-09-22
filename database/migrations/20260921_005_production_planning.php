@@ -118,6 +118,20 @@ return [
             );
         }
 
+        $columnStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='production_batches' AND COLUMN_NAME='production_plan_id'"
+        );
+        $columnStmt->execute();
+        if ((int)$columnStmt->fetchColumn() === 0) {
+            $pdo->exec(
+                'ALTER TABLE production_batches
+                 ADD COLUMN production_plan_id BIGINT UNSIGNED NULL AFTER id,
+                 ADD CONSTRAINT fk_batch_plan FOREIGN KEY(production_plan_id) REFERENCES production_plans(id) ON DELETE SET NULL,
+                 ADD UNIQUE KEY uq_batch_plan(production_plan_id)'
+            );
+        }
+
         $permissions = [
             ['planning.view','Production Planning','View production plans'],
             ['planning.manage','Production Planning','Create and rebuild production plans'],
